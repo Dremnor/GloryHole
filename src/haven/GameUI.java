@@ -43,6 +43,7 @@ import java.util.stream.Collectors;
 import haven.automated.*;
 import haven.automated.mapper.MappingClient;
 import haven.automated.pathfinder.Pathfinder;
+import haven.gloryhole.DrinkFluid;
 import haven.render.Location;
 import haven.res.ui.stackinv.ItemStack;
 
@@ -1594,7 +1595,10 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
 		if (getmeter("stam", 0).a < meterFullness) {
 			if(System.currentTimeMillis() > lastAutoDrinkTime + 1000 || System.currentTimeMillis() > lastAutoDrinkTime + 3500){
 				lastAutoDrinkTime = System.currentTimeMillis();
-				wdgmsg("act", "drink");
+
+				new Thread(new DrinkFluid(this)).start();
+
+				//wdgmsg("act", "drink");
 			}
 		}
 	}
