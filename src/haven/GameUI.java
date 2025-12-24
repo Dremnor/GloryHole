@@ -52,6 +52,7 @@ import static haven.Inventory.invsq;
 
 public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.Handler {
     private static final int blpw = UI.scale(0), brpw = UI.scale(142);
+	private Thread DrinkThread;
     public final String chrid, genus;
     public final long plid;
     private final Hidepanel ulpanel, umpanel, urpanel, /*blpanel, mapmenupanel,*/ brpanel, menupanel;
@@ -1595,10 +1596,14 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
 		if (getmeter("stam", 0).a < meterFullness) {
 			if(System.currentTimeMillis() > lastAutoDrinkTime + 1000 || System.currentTimeMillis() > lastAutoDrinkTime + 3500){
 				lastAutoDrinkTime = System.currentTimeMillis();
-
-				new Thread(new DrinkFluid(this)).start();
-
-				//wdgmsg("act", "drink");
+				if( Utils.getprefb("autoDrinkingAllFluids", false)){
+					if(DrinkThread == null || !DrinkThread.isAlive()){
+						DrinkThread = new Thread(new DrinkFluid(this));
+						DrinkThread.start();
+					}
+				}else{
+					wdgmsg("act", "drink");
+				}
 			}
 		}
 	}

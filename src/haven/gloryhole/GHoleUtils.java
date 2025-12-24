@@ -146,4 +146,31 @@ public class GHoleUtils {
         return ui.gui.getmeter("stam", 0).a;
     }
 
+    public static Color findHighestTextEntryValueLessThanQ(double q) {
+        TextEntry[] textEntries = {OptWnd.q7ColorTextEntry, OptWnd.q6ColorTextEntry, OptWnd.q5ColorTextEntry, OptWnd.q4ColorTextEntry, OptWnd.q3ColorTextEntry, OptWnd.q2ColorTextEntry, OptWnd.q1ColorTextEntry};
+        int highestValue = Integer.MIN_VALUE;
+        int indexOfHighest = -1;
+
+        for (int i = 0; i < textEntries.length; i++) {
+            try {
+                int value = Integer.parseInt(textEntries[i].text());
+                if (value <= q && value > highestValue) {
+                    highestValue = value;
+                    indexOfHighest = i;
+                }
+            } catch (NumberFormatException ignored) {}
+        }
+
+        return switch (indexOfHighest) {
+            case 0 -> OptWnd.q7ColorOptionWidget.currentColor;
+            case 1 -> OptWnd.q6ColorOptionWidget.currentColor;
+            case 2 -> OptWnd.q5ColorOptionWidget.currentColor;
+            case 3 -> OptWnd.q4ColorOptionWidget.currentColor;
+            case 4 -> OptWnd.q3ColorOptionWidget.currentColor;
+            case 5 -> OptWnd.q2ColorOptionWidget.currentColor;
+            case 6 -> OptWnd.q1ColorOptionWidget.currentColor;
+            default -> new Color(255, 255, 255, 255);
+        };
+    }
+
 }

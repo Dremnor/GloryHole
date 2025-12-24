@@ -2,20 +2,25 @@
 package haven.res.ui.tt.q.qbuff;
 
 import haven.*;
+import haven.gloryhole.GHoleUtils;
+
+import java.awt.*;
 import java.util.*;
 import java.awt.image.BufferedImage;
+import java.util.List;
 
 @haven.FromResource(name = "ui/tt/q/qbuff", version = 8)
 public class QBuff extends ItemInfo.Tip {
     public BufferedImage icon;
     public String name;
     public double q;
-
+	public Color color, outline = Color.BLACK;
     public QBuff(Owner owner, BufferedImage icon, String name, double q) {
-	super(owner);
-	this.icon = icon;
-	this.name = name;
-	this.q = q;
+		super(owner);
+		this.icon = icon;
+		this.name = name;
+		this.q = q;
+		this.color = GHoleUtils.findHighestTextEntryValueLessThanQ(this.q);
     }
 
     public static interface Modifier {
@@ -38,6 +43,10 @@ public class QBuff extends ItemInfo.Tip {
 		mod.prepare(this);
 	}
     }
+
+	public void UpdateColor(){
+		this.color = GHoleUtils.findHighestTextEntryValueLessThanQ(this.q);
+	}
 
     public static class Table extends QList {
 	public Table(Owner owner) {super(owner);}

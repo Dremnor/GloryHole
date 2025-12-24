@@ -72,7 +72,7 @@ public class DrinkFluid implements Runnable {
         boolean success = false;
         if (drinkFromThis != null) {
             if (GHoleUtils.petalExists(gui.ui)) {
-                int limit = 1000;
+                int limit = 10;
                 int sleep = 10;
                 int cycles = 0;
                 while (GHoleUtils.petalExists(gui.ui)) {
@@ -103,7 +103,7 @@ public class DrinkFluid implements Runnable {
                 return false;
             }
             if (GHoleUtils.petalExists(gui.ui)) {
-                int limit = 1000;
+                int limit = 10;
                 int sleep = 10;
                 int cycles = 0;
                 while (GHoleUtils.petalExists(gui.ui)) {

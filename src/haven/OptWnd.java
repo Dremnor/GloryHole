@@ -2517,6 +2517,7 @@ public class OptWnd extends Window {
 	public static CheckBox showQualityDisplayCheckBox;
 	public static CheckBox roundedQualityCheckBox;
 	public static CheckBox customQualityColorsCheckBox;
+	public static CheckBox enableSortingCheckBox;
 
 	public static TextEntry q7ColorTextEntry, q6ColorTextEntry, q5ColorTextEntry, q4ColorTextEntry, q3ColorTextEntry, q2ColorTextEntry, q1ColorTextEntry;
 	public static ColorOptionWidget q7ColorOptionWidget, q6ColorOptionWidget, q5ColorOptionWidget, q4ColorOptionWidget, q3ColorOptionWidget, q2ColorOptionWidget, q1ColorOptionWidget;
@@ -2554,6 +2555,7 @@ public class OptWnd extends Window {
 					if (ui != null && ui.gui != null) ui.gui.reloadAllItemOverlays();
 				}
 			}, prev.pos("bl").adds(0, 12));
+
 			prev.tooltip = customQualityColorsTooltip;
 
 			prev = add(q7ColorTextEntry = new TextEntry(UI.scale(60), Utils.getpref("q7ColorTextEntry", "400")){
@@ -2687,6 +2689,15 @@ public class OptWnd extends Window {
 				if (ui != null && ui.gui != null) ui.gui.reloadAllItemOverlays();
 			}), prev.pos("ur").adds(30, 0));
 			prev.tooltip = resetButtonTooltip;
+
+			prev = add(enableSortingCheckBox = new CheckBox("Enable Sorting By Color"){
+				{a = (Utils.getprefb("enableSortingByColor", false));}
+				public void changed(boolean val) {
+					Utils.setprefb("enableSortingByColor", val);
+					if (ui != null && ui.gui != null) ui.gui.reloadAllItemOverlays();
+				}
+			}, prev.pos("bl").adds(0, 12).x(UI.scale(0)));
+			prev.tooltip = enableSortingByColorTooltip;
 
 			Widget backButton;
 			add(backButton = new PButton(UI.scale(200), "Back", 27, back, "Advanced Settings"), prev.pos("bl").adds(0, 18).x(0));
@@ -2913,6 +2924,7 @@ public class OptWnd extends Window {
 	public static CheckBox autoPeaceAnimalsWhenCombatStartsCheckBox;
 	public static CheckBox preventUsingRawHideWhenRidingCheckBox;
 	public static CheckBox autoDrinkingCheckBox;
+	public static CheckBox autoDrinkingAllFluidsCheckBox;
 	public static TextEntry autoDrinkingThresholdTextEntry;
 	public static CheckBox enableQueuedMovementCheckBox;
     public static CheckBox walkWithPathFinderCheckBox;
@@ -3127,6 +3139,18 @@ public class OptWnd extends Window {
 					super.changed();
 				}
 			}, prev.pos("ur").adds(10, 0));
+
+			prev = add(autoDrinkingAllFluidsCheckBox = new CheckBox("Auto-Drink All Fluids"){
+				{a = Utils.getprefb("autoDrinkingAllFluids", false);}
+				public void set(boolean val) {
+					Utils.setprefb("autoDrinkingAllFluids", val);
+					a = val;
+					if (ui != null && ui.gui != null) {
+						ui.gui.optionInfoMsg("Auto-Drinking ALL FLUIDS is now " + (val ? "ENABLED!" : "DISABLED") + "!",
+								(val ? msgGreen : msgRed), Audio.resclip(val ? Toggle.sfxon : Toggle.sfxoff));
+					}
+				}
+			}, prev.pos("bl").adds(0, 12));
 
 			prev = add(enableQueuedMovementCheckBox = new CheckBox("Enable Queued Movement Window (Alt+Click)"){
 				{a = Utils.getprefb("enableQueuedMovement", true);}
@@ -5118,6 +5142,8 @@ public class OptWnd extends Window {
 	// Misc/Other
 	private static final Object resetButtonTooltip = RichText.render("Reset to default value.", UI.scale(300));
 	private static final Object genericHasKeybindTooltip = RichText.render("$col[218,163,0]{Keybind:} $col[185,185,185]{This can also be toggled using a keybind.}", UI.scale(300));
+
+	private static final Object enableSortingByColorTooltip = RichText.render("Use quality color while sorting inventory. Difrent colors wiill be sorted or transfered as diffrent type of item.", UI.scale(300));
 
 	@Override
 	protected void attached() {

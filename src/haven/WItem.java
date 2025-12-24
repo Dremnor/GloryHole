@@ -295,6 +295,14 @@ public class WItem extends Widget implements DTarget {
 				return true;
 			}
 		}
+
+		if (ui.modctrl && ui.modmeta){
+			wdgmsg("drop-identical", item, false);
+			return true;
+		}
+
+
+
 	    if(ui.modshift) {
 		int n = ui.modctrl ? -1 : 1;
 		item.wdgmsg("transfer", ev.c, n);

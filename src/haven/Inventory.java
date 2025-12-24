@@ -26,9 +26,12 @@
 
 package haven;
 
+import haven.gloryhole.GHoleUtils;
 import haven.res.ui.stackinv.ItemStack;
 
+import java.awt.*;
 import java.util.*;
+import java.util.List;
 import java.util.stream.Collectors;
 
 public class Inventory extends Widget implements DTarget {
@@ -228,10 +231,18 @@ public class Inventory extends Widget implements DTarget {
 
 	@Override
 	public void wdgmsg(Widget sender, String msg, Object... args) {
-		if(msg.equals("transfer-ordered")){
-			processTransfer(getSame((GItem) args[0], (Boolean) args[1]));
-		} else {
-			super.wdgmsg(sender, msg, args);
+
+		switch (msg){
+			case "transfer-ordered":
+				processTransfer(getSame((GItem) args[0], (Boolean) args[1]));
+				break;
+			case "drop-identical":
+				processDrop(getSame((GItem) args[0], (Boolean) args[1]));
+				break;
+			default:
+				//ui.gui.syslog.append(new ChatUI.Channel.SimpleMessage("Default? - "+msg,Color.PINK));
+				super.wdgmsg(sender, msg, args);
+				break;
 		}
 	}
 
@@ -290,20 +301,41 @@ public class Inventory extends Widget implements DTarget {
 		}
 	}
 
+	private void processDrop(List<WItem> items) {
+		List<Integer> externalInventoryIds = getExternalInventoryIds(ui);
+		for (WItem item : items){
+			item.item.wdgmsg("drop", Coord.z);
+		}
+	}
+
 	private List<WItem> getSame(GItem item, Boolean ascending) {
 		List<WItem> items = new ArrayList<>();
+		Color templateColor = Color.white;
+		if(item.getQBuff() != null)
+			templateColor = GHoleUtils.findHighestTextEntryValueLessThanQ(item.getQBuff().q);
 		try {
 			String name = item.res.get().name;
 			GSprite spr = item.spr();
 			for(Widget wdg = lchild; wdg != null; wdg = wdg.prev) {
-				if(wdg.visible && wdg instanceof WItem) {
+				if(wdg.visible && wdg instanceof WItem && ((WItem) wdg).item.getQBuff() != null) {
 					WItem wItem = (WItem) wdg;
 					GItem child = wItem.item;
 					try {
 						if(child.res.get().name.equals(name) && ((spr == child.spr()) || (spr != null && spr.same(child.spr())))) {
-							items.add(wItem);
+							if(Utils.getprefb("enableSortingByColor", false)){
+								Color itemColor = GHoleUtils.findHighestTextEntryValueLessThanQ(((WItem) wdg).item.getQBuff().q);
+								if(itemColor.equals(templateColor)){
+									items.add(wItem);
+								}
+							}else{
+								items.add(wItem);
+							}
 						}
 					} catch (Loading e) {}
+				}else{
+					if(wdg.visible && wdg instanceof WItem){
+						items.add((WItem) wdg);
+					}
 				}
 			}
 			Collections.sort(items, ascending ? ITEM_COMPARATOR_ASC : ITEM_COMPARATOR_DESC);

@@ -59,6 +59,7 @@ public class Quality extends QBuff implements GItem.OverlayInfo<Tex> {
         } catch (Exception ignored) {
         }
         if (!irrelevantQuality)
+
             return (new TexI(PUtils.strokeImg(OptWnd.roundedQualityCheckBox.a ? GItem.NumberInfo.numrenderStroked((int) Math.round(q), qualityColor, true)
                     : GItem.NumberInfo.numrenderStrokedDecimal(q, qualityColor, true))));
         else
