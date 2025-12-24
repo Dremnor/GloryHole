@@ -209,14 +209,14 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 
 	public void added(RenderTree.Slot slot) {
 	    slot.add(spr);
+        if (this.spr != null && this.spr.res != null && this.spr.res.name.contains("decal")){
+            if (OptWnd.flatCupboardsCheckBox.a && this.spr.owner.getres().name.equals("gfx/terobjs/cupboard"))
+                slot.cstate(Pipe.Op.compose(Location.scale(1, 1, 1.6f), Location.xlate(new Coord3f(0, 0, -5.4f))));
+            slot.ostate(new MixColor(new Color(255, 255, 255, 0)));
+        }
 	    if(slots == null)
 		slots = new ArrayList<>(1);
 	    slots.add(slot);
-		if (this.spr != null && this.spr.res != null && this.spr.res.name.contains("decal")){
-			if (OptWnd.flatCupboardsCheckBox.a && this.spr.owner.getres().name.equals("gfx/terobjs/cupboard"))
-				slot.cstate(Pipe.Op.compose(Location.scale(1, 1, 1.6f), Location.xlate(new Coord3f(0, 0, -5.4f))));
-			slot.ostate(new MixColor(new Color(255, 255, 255, 0)));
-		}
 	}
 
 	public void removed(RenderTree.Slot slot) {
@@ -656,9 +656,18 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
     public void addol(Overlay ol, boolean async) {
 	if (getres() != null) {
 		if(OptWnd.disableIndustrialSmokeCheckBox.a && !getres().name.equals("gfx/terobjs/clue")) {
-				if (ol.spr != null && ol.spr.res != null && ol.spr.res.name.contains("ismoke")) {
+			try {
+				Resource res = null;
+				if(ol.sm instanceof OCache.OlSprite) {
+					res = ((OCache.OlSprite)ol.sm).res.get();
+				} else if(ol.sm instanceof Sprite.Mill.FromRes) {
+					res = ((Sprite.Mill.FromRes)ol.sm).res.get();
+				} else if(ol.spr != null) {
+					res = ol.spr.res;
+				}
+				if(res != null && res.name.contains("ismoke"))
 					return;
-			}
+			} catch(Loading ignored) {}
 		}
 		if(OptWnd.disableScentSmokeCheckBox.a && getres().name.equals("gfx/terobjs/clue")) {
 			return;
