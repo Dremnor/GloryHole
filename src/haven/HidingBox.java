@@ -18,8 +18,7 @@ public class HidingBox extends SlottedNode implements Rendered {
 	public static final float WIDTH = 2f;
 
     // Hollow
-	public static final Pipe.Op TOP = Pipe.Op.compose(Rendered.last, States.Depthtest.none, States.maskdepth);
-	public static Pipe.Op SOLID_HOLLOW = Pipe.Op.compose(Pipe.Op.compose(new BaseColor(new Color(Integer.parseInt(OptWnd.hiddenObjectsColorSetting[0]), Integer.parseInt(OptWnd.hiddenObjectsColorSetting[1]), Integer.parseInt(OptWnd.hiddenObjectsColorSetting[2]), 170)), new States.LineWidth(WIDTH)), TOP);
+	public static Pipe.Op SOLID_HOLLOW = Pipe.Op.compose(new BaseColor(OptWnd.hiddenObjectsColorOptionWidget.currentColor), new States.LineWidth(WIDTH), Rendered.last, States.Depthtest.none);
 
     // Filled
     public static Pipe.Op SOLID_FILLED = Pipe.Op.compose(new BaseColor(OptWnd.hiddenObjectsColorOptionWidget.currentColor), new States.Facecull(States.Facecull.Mode.NONE), Rendered.last);
@@ -77,13 +76,13 @@ public class HidingBox extends SlottedNode implements Rendered {
 		Resource res = getResource(gob);
         String resName = res.name;
 		TreeScale treeScale = null;
-		float boxScale = 1.0f;
+		float boxScale = 1000.0f;
 		boolean growingTreeOrBush = false;
 		if ((resName.startsWith("gfx/terobjs/trees") && !resName.endsWith("log") && !resName.endsWith("oldtrunk")) || resName.startsWith("gfx/terobjs/bushes")) {
 			treeScale = gob.getattr(TreeScale.class);
 			if (treeScale != null) {
 				if (treeScale.scale < 1.0f || treeScale.scale > 1.0f) { // ND: Don't care about the original scale, cause the collision always assumes it's a fully grown tree
-					boxScale = 1.0f / treeScale.scale;
+					boxScale = 1000.0f / treeScale.scale;
 					growingTreeOrBush = true;
 				}
 			}
