@@ -31,12 +31,16 @@ public class DrinkFluid implements Runnable {
         if (drinkFromThis == null) {
             for (Widget w = gui.lchild; w != null; w = w.prev) {
                 if (drinkFromThis != null) break;
+                if (w.parent == null) continue;
                 if (w instanceof Window) {
                     Window wnd = (Window) w;
+                    if (wnd.parent == null) continue;
                     for (Widget wdg = wnd.lchild; wdg != null; wdg = wdg.prev) {
+                        if (wdg.parent == null) continue;
                         if (drinkFromThis != null) break;
                         if (wdg instanceof Inventory) {
                             for (WItem item : wdg.children(WItem.class)) {
+                                if (item.parent == null) continue;
                                 if (GHoleUtils.canDrinkFrom(item)) {
                                     drinkFromThis = item;
                                     break;
@@ -70,7 +74,7 @@ public class DrinkFluid implements Runnable {
         }
 
         boolean success = false;
-        if (drinkFromThis != null) {
+        if (drinkFromThis != null && drinkFromThis.parent != null) {
             if (GHoleUtils.petalExists(gui.ui)) {
                 int limit = 10;
                 int sleep = 10;
@@ -88,10 +92,7 @@ public class DrinkFluid implements Runnable {
                 }
             }
             success = sipMode(drinkFromThis);
-
         }
-
-
     }
 
 
@@ -99,6 +100,7 @@ public class DrinkFluid implements Runnable {
         double stamina = GHoleUtils.getStamina(gui.ui);
         int sips = 1;
         for (int i = 0; i < sips; i++) {
+            if (drinkFromThis.parent == null) return false;
             if (!GHoleUtils.canDrinkFrom(drinkFromThis)) {
                 return false;
             }
@@ -108,35 +110,24 @@ public class DrinkFluid implements Runnable {
                 int cycles = 0;
                 while (GHoleUtils.petalExists(gui.ui)) {
                     if (cycles >= limit) {
-
                         return false;
                     }
                     GHoleUtils.sleep(sleep);
                     cycles += sleep;
                 }
             }
-
+            if (drinkFromThis.parent == null) return false;
             GHoleUtils.activateItem(drinkFromThis);
-
             if (!GHoleUtils.waitForFlowerMenu(gui.ui, 5000)) {
                 return false;
             }
-
             if (GHoleUtils.choosePetal(gui.ui, "Sip"))
                 GHoleUtils.waitFlowermenuClose(gui.ui);
             else {
                 GHoleUtils.closeFlowermenu(gui.ui);
                 return false;
             }
-
         }
         return true;
     }
-
-
-
-    //drink item
-
-
-
 }

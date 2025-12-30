@@ -15,15 +15,26 @@ public class GHoleUtils {
     }};
 
     public static void activateItem(WItem item) {
+        if (item == null || item.parent == null || item.item == null) {
+            return;
+        }
         item.item.wdgmsg("iact", Coord.z, 3);
     }
 
     public static boolean canDrinkFrom(WItem item) {
+        if (item == null || item.parent == null || item.item == null) {
+            return false;
+        }
+
         Pattern liquidPattern = Pattern.compile(String.format("[0-9.]+ l of (%s)",
-                //	String.join("|", new String[] { "Water", "Piping Hot Tea", "Tea" }), Pattern.CASE_INSENSITIVE));
                 String.join("|", liquids)), Pattern.CASE_INSENSITIVE);
         ItemInfo.Contents contents = getContents(item);
+
         if (contents != null && contents.sub != null && contents.content.count >= 0.05) {
+            if (item.item.ui == null) {
+                return false;
+            }
+
             synchronized (item.item.ui) {
                 for (ItemInfo info : contents.sub) {
                     if (info instanceof ItemInfo.Name) {
@@ -41,22 +52,35 @@ public class GHoleUtils {
     }
 
     public static ItemInfo.Contents getContents(WItem item) {
+        if (item == null || item.item == null) {
+            return null;
+        }
+
         try {
             for (ItemInfo info : item.item.info())
                 if (info instanceof ItemInfo.Contents)
                     return (ItemInfo.Contents) info;
         } catch (Loading ignored) {
+        } catch (NullPointerException ignored) {
+            // Widget został usunięty podczas iteracji
         }
         return null;
     }
 
     public static void waitForFlowerMenu(UI ui) {
+        if (ui == null || ui.root == null) {
+            return;
+        }
         while (ui.root.findchild(FlowerMenu.class) == null) {
             sleep(15);
         }
     }
 
     public static boolean waitForFlowerMenu(UI ui, int limit) {
+        if (ui == null || ui.root == null) {
+            return false;
+        }
+
         int cycles = 0;
         int sleep = 10;
         while (ui.root.findchild(FlowerMenu.class) == null) {
@@ -79,8 +103,12 @@ public class GHoleUtils {
     }
 
     public static boolean choosePetal(UI ui, String name) {
+        if (ui == null || ui.root == null) {
+            return false;
+        }
+
         FlowerMenu menu = ui.root.findchild(FlowerMenu.class);
-        if (menu != null) {
+        if (menu != null && menu.parent != null) {
             for (FlowerMenu.Petal opt : menu.opts) {
                 if (opt.name.equals(name)) {
                     menu.choose(opt);
@@ -93,8 +121,12 @@ public class GHoleUtils {
     }
 
     public static void closeFlowermenu(UI ui) {
+        if (ui == null || ui.root == null) {
+            return;
+        }
+
         FlowerMenu menu = ui.root.findchild(FlowerMenu.class);
-        if (menu != null) {
+        if (menu != null && menu.parent != null) {
             menu.choose(null);
             menu.destroy();
         }
@@ -104,8 +136,12 @@ public class GHoleUtils {
     }
 
     public static FlowerMenu.Petal getPetal(UI ui, String name) {
+        if (ui == null || ui.root == null) {
+            return null;
+        }
+
         FlowerMenu menu = ui.root.findchild(FlowerMenu.class);
-        if (menu != null) {
+        if (menu != null && menu.parent != null) {
             for (FlowerMenu.Petal opt : menu.opts) {
                 if (opt.name.equals(name)) {
                     return opt;
@@ -116,19 +152,28 @@ public class GHoleUtils {
     }
 
     public static boolean petalExists(UI ui) {
-        FlowerMenu menu = ui.root.findchild(FlowerMenu.class);
-        if (menu != null) {
-            return true;
+        if (ui == null || ui.root == null) {
+            return false;
         }
-        return false;
+
+        FlowerMenu menu = ui.root.findchild(FlowerMenu.class);
+        return menu != null && menu.parent != null;
     }
 
     public static void waitFlowermenuClose(UI ui) {
+        if (ui == null || ui.root == null) {
+            return;
+        }
+
         while (ui.root.findchild(FlowerMenu.class) != null)
             sleep(25);
     }
 
     public static boolean waitFlowermenuClose(UI ui, int limit) {
+        if (ui == null || ui.root == null) {
+            return false;
+        }
+
         int cycles = 0;
         int sleep = 25;
         while (ui.root.findchild(FlowerMenu.class) != null) {
@@ -143,7 +188,14 @@ public class GHoleUtils {
     }
 
     public static double getStamina(UI ui) {
-        return ui.gui.getmeter("stam", 0).a;
+        if (ui == null || ui.gui == null) {
+            return 0.0;
+        }
+        try {
+            return ui.gui.getmeter("stam", 0).a;
+        } catch (NullPointerException e) {
+            return 0.0;
+        }
     }
 
     public static Color findHighestTextEntryValueLessThanQ(double q) {
