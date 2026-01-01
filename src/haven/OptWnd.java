@@ -1012,7 +1012,8 @@ public class OptWnd extends Window {
 
 		public ActionBarsSettingsPanel(Panel back) {
 			Widget prev;
-			prev = add(new Label("Enabled Action Bars:"), 0, 0);
+            prev = add(new Label("You can move the bars with Middle Mouse Button (scroll click)."), 0, 4);
+			prev = add(new Label("Enabled Action Bars:"), prev.pos("bl").adds(0, 12));
 			add(new Label("Action Bar Orientation:"), prev.pos("ur").adds(42, 0));
 			prev = add(new CheckBox("Action Bar 1"){
 				{a = Utils.getprefb("showActionBar1", true);}
@@ -1024,6 +1025,7 @@ public class OptWnd extends Window {
 				}
 			}, prev.pos("bl").adds(12, 6));
 			addOrientationRadio(prev, "actionBar1Horizontal", 1);
+
 			prev = add(new CheckBox("Action Bar 2"){
 				{a = Utils.getprefb("showActionBar2", false);}
 				public void changed(boolean val) {
@@ -1034,6 +1036,7 @@ public class OptWnd extends Window {
 				}
 			}, prev.pos("bl").adds(0, 2));
 			addOrientationRadio(prev, "actionBar2Horizontal", 2);
+
 			prev = add(new CheckBox("Action Bar 3"){
 				{a = Utils.getprefb("showActionBar3", false);}
 				public void changed(boolean val) {
@@ -1044,6 +1047,7 @@ public class OptWnd extends Window {
 				}
 			}, prev.pos("bl").adds(0, 2));
 			addOrientationRadio(prev, "actionBar3Horizontal", 3);
+
 			prev = add(new CheckBox("Action Bar 4"){
 				{a = Utils.getprefb("showActionBar4", false);}
 				public void changed(boolean val) {
@@ -1054,6 +1058,28 @@ public class OptWnd extends Window {
 				}
 			}, prev.pos("bl").adds(0, 2));
 			addOrientationRadio(prev, "actionBar4Horizontal", 4);
+
+            prev = add(new CheckBox("Action Bar 5"){
+                {a = Utils.getprefb("showActionBar5", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("showActionBar5", val);
+                    if (ui != null && ui.gui != null && ui.gui.actionBar5 != null){
+                        ui.gui.actionBar5.show(val);
+                    }
+                }
+            }, prev.pos("bl").adds(0, 2));
+            addOrientationRadio(prev, "actionBar5Horizontal", 5);
+
+            prev = add(new CheckBox("Action Bar 6"){
+                {a = Utils.getprefb("showActionBar6", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("showActionBar6", val);
+                    if (ui != null && ui.gui != null && ui.gui.actionBar6 != null){
+                        ui.gui.actionBar6.show(val);
+                    }
+                }
+            }, prev.pos("bl").adds(0, 2));
+            addOrientationRadio(prev, "actionBar6Horizontal", 6);
 
 			prev = add(holdCTRLtoRemoveActionButtonsCheckBox = new CheckBox("Hold CTRL when right-clicking to remove action buttons"){
 				{a = (Utils.getprefb("holdCTRLtoRemoveActionButtons", false));}
@@ -1077,6 +1103,12 @@ public class OptWnd extends Window {
 			y = cont.adda(new Label("Action Bar 4 Keybinds"), cont.sz.x / 2, y + UI.scale(10), 0.5, 0.0).pos("bl").adds(0, 5).y;
 			for (int i = 0; i < GameUI.kb_actbar4.length; i++)
 				y = addbtn(cont, String.format("Button - %d", i + 1), GameUI.kb_actbar4[i], y);
+            y = cont.adda(new Label("Action Bar 5 Keybinds"), cont.sz.x / 2, y + UI.scale(10), 0.5, 0.0).pos("bl").adds(0, 5).y;
+            for (int i = 0; i < GameUI.kb_actbar5.length; i++)
+                y = addbtn(cont, String.format("Button - %d", i + 1), GameUI.kb_actbar5[i], y);
+            y = cont.adda(new Label("Action Bar 6 Keybinds"), cont.sz.x / 2, y + UI.scale(10), 0.5, 0.0).pos("bl").adds(0, 5).y;
+            for (int i = 0; i < GameUI.kb_actbar6.length; i++)
+                y = addbtn(cont, String.format("Button - %d", i + 1), GameUI.kb_actbar6[i], y);
 			adda(new PButton(UI.scale(200), "Back", 27, back, "Advanced Settings"), scroll.pos("bl").adds(0, 10).x(scroll.sz.x / 2), 0.5, 0.0);
 			pack();
 		}
@@ -2922,6 +2954,7 @@ public class OptWnd extends Window {
 	public static CheckBox autoDropLeechesCheckBox;
 	public static CheckBox autoEquipBunnySlippersPlateBootsCheckBox;
 	public static CheckBox autoDropTicksCheckBox;
+	public static CheckBox autoPeaceAnimalsWhenCombatStartsCheckBox;
 	public static CheckBox preventUsingRawHideWhenRidingCheckBox;
 	public static CheckBox autoDrinkingCheckBox;
 	public static CheckBox autoDrinkingAllFluidsCheckBox;
@@ -3100,6 +3133,17 @@ public class OptWnd extends Window {
 				}
 			}),prev.pos("bl").adds(0, 12).x(0));
 
+			prev = add(autoPeaceAnimalsWhenCombatStartsCheckBox = new CheckBox("Auto-Peace Animals when Combat Starts"){
+				{a = Utils.getprefb("autoPeaceAnimalsWhenCombatStarts", false);}
+				public void set(boolean val) {
+					Utils.setprefb("autoPeaceAnimalsWhenCombatStarts", val);
+					a = val;
+					if (ui != null && ui.gui != null) {
+						ui.gui.optionInfoMsg("Autopeace Animals when Combat Starts is now " + (val ? "ENABLED" : "DISABLED") + ".", (val ? msgGreen : msgRed), Audio.resclip(val ? Toggle.sfxon : Toggle.sfxoff));
+					}
+				}
+			}, prev.pos("bl").adds(0, 12));
+			autoPeaceAnimalsWhenCombatStartsCheckBox.tooltip = autoPeaceAnimalsWhenCombatStartsTooltip;
 			prev = add(preventUsingRawHideWhenRidingCheckBox = new CheckBox("Prevent using Raw Hide when Riding a Horse"){
 				{a = Utils.getprefb("preventUsingRawHideWhenRiding", false);}
 				public void changed(boolean val) {
@@ -4019,7 +4063,6 @@ public class OptWnd extends Window {
 					a = val;
 					if (ui != null && ui.gui != null) {
 						ui.sess.glob.oc.gobAction(Gob::updateHidingBoxes);
-                        ui.sess.glob.oc.gobAction(Gob::refreshCrops);
 						ui.gui.map.updatePlobHidingBox();
 					}
 				}
@@ -4159,7 +4202,6 @@ public class OptWnd extends Window {
 					Utils.setprefb("hideCrops", val);
 					if (ui != null && ui.gui != null) {
 						ui.sess.glob.oc.gobAction(Gob::updateHidingBoxes);
-                        ui.sess.glob.oc.gobAction(Gob::refreshCrops);
 						ui.gui.map.updatePlobHidingBox();
 					}
 				}
@@ -4448,20 +4490,28 @@ public class OptWnd extends Window {
 
 	}
 
-	public static CheckBox autoLootRingsCheckBox;
-	public static CheckBox autoLootNecklaceCheckBox;
-	public static CheckBox autoLootWeaponCheckBox;
-	public static CheckBox autoLootHelmetCheckBox;
-	public static CheckBox autoLootChestArmorCheckBox;
+    public static CheckBox autoLootHeadgearCheckBox;
+    public static CheckBox autoLootNecklaceCheckBox;
+    public static CheckBox autoLootShouldersCheckBox;
+    public static CheckBox autoLootShirtCheckBox;
+    public static CheckBox autoLootGlovesCheckBox;
+    public static CheckBox autoLootCloakRobeCheckBox;
+    public static CheckBox autoLootPantsCheckBox;
+    public static CheckBox autoLootCapeCheckBox;
+
+    public static CheckBox autoLootMaskCheckBox;
+    public static CheckBox autoLootEyewearCheckBox;
+    public static CheckBox autoLootMouthwearCheckBox;
+    public static CheckBox autoLootChestArmorCheckBox;
+    // ND: Belt shouldn't be attempted, since you can't put it in your inventory if filled anyway
+    public static CheckBox autoLootBackpackCheckBox;
 	public static CheckBox autoLootLegArmorCheckBox;
-	public static CheckBox autoLootCloakRobeCheckBox;
-	public static CheckBox autoLootShirtCheckBox;
-	public static CheckBox autoLootPantsCheckBox;
-	public static CheckBox autoLootGlovesCheckBox;
-	public static CheckBox autoLootBootsCheckBox;
-	public static CheckBox autoLootEyewearCheckBox;
-	public static CheckBox autoLootMouthCheckBox;
-	public static CheckBox autoLootCapeCheckBox;
+	public static CheckBox autoLootShoesCheckBox;
+
+    // ND: it's stupid that I have to add them like this, but the game freezes if I only use one and add it twice lol
+    public static CheckBox autoLootWeaponCheckBox, autoLootWeaponCheckBox2; // ND: Checks both hands just for weapons
+    public static CheckBox autoLootRingsCheckBox, autoLootRingsCheckBox2; // ND: Tries both rings
+    public static CheckBox autoLootPouchesCheckBox, autoLootPouchesCheckBox2; // ND: Tries both pouches
 
 	public class AutoLootSettingsPanel extends Panel {
 
@@ -4473,101 +4523,152 @@ public class OptWnd extends Window {
 
 		public AutoLootSettingsPanel(Panel back) {
 			Widget prev;
+            Widget leftColumn, rightColumn;
 
 			Scrollport scroll = add(new Scrollport(UI.scale(new Coord(350, 40))), 0, 0);
 			prev = scroll.cont;
 			addbtn(prev, "Loot Nearest Knocked Player hotkey:", GameUI.kb_lootNearestKnockedPlayer, 0);
 
-			prev = add(new Label("Auto-Loot the following gear from enemies (when stealing):"), prev.pos("bl").adds(0, 6));
-			prev = add(autoLootRingsCheckBox = new CheckBox("Rings"){
-				{a = Utils.getprefb("autoLootRings", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootRings", val);
-				}
-			}, prev.pos("bl").adds(0, 4).x(12));
-			prev = add(autoLootNecklaceCheckBox = new CheckBox("Necklace"){
-				{a = Utils.getprefb("autoLootNecklace", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootNecklace", val);
-				}
-			}, prev.pos("bl").adds(0, 2));
-			prev = add(autoLootWeaponCheckBox = new CheckBox("Weapon (Try to put in Belt first, then Inventory)"){
-				{a = Utils.getprefb("autoLootWeapon", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootWeapon", val);
-				}
-			}, prev.pos("bl").adds(0, 2));
-			prev = add(autoLootHelmetCheckBox = new CheckBox("Helmet"){
-				{a = Utils.getprefb("autoLootHelmet", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootHelmet", val);
-				}
-			}, prev.pos("bl").adds(0, 2));
-			prev = add(autoLootChestArmorCheckBox = new CheckBox("Chest Armor"){
-				{a = Utils.getprefb("autoLootChestArmor", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootChestArmor", val);
-				}
-			}, prev.pos("bl").adds(0, 2));
-			prev = add(autoLootLegArmorCheckBox = new CheckBox("Leg Armor"){
-				{a = Utils.getprefb("autoLootLegArmor", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootLegArmor", val);
-				}
-			}, prev.pos("bl").adds(0, 2));
-			prev = add(autoLootCloakRobeCheckBox = new CheckBox("Cloak/Robe"){
-				{a = Utils.getprefb("autoLootCloakRobe", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootCloakRobe", val);
-				}
-			}, prev.pos("bl").adds(0, 2));
-			prev = add(autoLootShirtCheckBox = new CheckBox("Shirt"){
-				{a = Utils.getprefb("autoLootShirt", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootShirt", val);
-				}
-			}, prev.pos("bl").adds(0, 2));
-			prev = add(autoLootPantsCheckBox = new CheckBox("Pants"){
-				{a = Utils.getprefb("autoLootPants", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootPants", val);
-				}
-			}, prev.pos("bl").adds(0, 2));
-			prev = add(autoLootGlovesCheckBox = new CheckBox("Gloves"){
-				{a = Utils.getprefb("autoLootGloves", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootGloves", val);
-				}
-			}, prev.pos("bl").adds(0, 2));
-			prev = add(autoLootBootsCheckBox = new CheckBox("Boots"){
-				{a = Utils.getprefb("autoLootBoots", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootBoots", val);
-				}
-			}, prev.pos("bl").adds(0, 2));
-			prev = add(autoLootEyewearCheckBox = new CheckBox("Eyewear"){
-				{a = Utils.getprefb("autoLootEyewear", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootEyewear", val);
-				}
-			}, prev.pos("bl").adds(0, 2));
-			prev = add(autoLootMouthCheckBox = new CheckBox("Mouth"){
-				{a = Utils.getprefb("autoLootMouth", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootMouth", val);
-				}
-			}, prev.pos("bl").adds(0, 2));
-			prev = add(autoLootCapeCheckBox = new CheckBox("Cape"){
-				{a = Utils.getprefb("autoLootCape", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("autoLootCape", val);
-				}
-			}, prev.pos("bl").adds(0, 2));
+			prev = add(new Label("Auto-Loot the following gear from players (when stealing):"), prev.pos("bl").adds(0, 6));
 
+            leftColumn = add(autoLootHeadgearCheckBox = new CheckBox("Headgear"){
+                {a = Utils.getprefb("autoLootHeadgear", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootHeadgear", val);
+                }
+            }, prev.pos("bl").adds(0, 4).x(12));
+            leftColumn = add(autoLootNecklaceCheckBox = new CheckBox("Necklace"){
+                {a = Utils.getprefb("autoLootNecklace", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootNecklace", val);
+                }
+            }, leftColumn.pos("bl").adds(0, 2));
+            leftColumn = add(autoLootShouldersCheckBox = new CheckBox("Shoulders"){
+                {a = Utils.getprefb("autoLootShoulders", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootShoulders", val);
+                }
+            }, leftColumn.pos("bl").adds(0, 2));
+            leftColumn = add(autoLootShirtCheckBox = new CheckBox("Shirt"){
+                {a = Utils.getprefb("autoLootShirt", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootShirt", val);
+                }
+            }, leftColumn.pos("bl").adds(0, 2));
+            leftColumn = add(autoLootGlovesCheckBox = new CheckBox("Gloves"){
+                {a = Utils.getprefb("autoLootGloves", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootGloves", val);
+                }
+            }, leftColumn.pos("bl").adds(0, 2));
+            leftColumn = add(autoLootWeaponCheckBox = new CheckBox("Weapon"){
+                {a = Utils.getprefb("autoLootWeapon", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootWeapon", val);
+                    autoLootWeaponCheckBox2.set(val);
+                }
+            }, leftColumn.pos("bl").adds(0, 2)).settip("Try to move it to Belt first, then Inventory if Belt is full.");
+            leftColumn = add(autoLootRingsCheckBox = new CheckBox("Rings"){
+                {a = Utils.getprefb("autoLootRings", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootRings", val);
+                    autoLootRingsCheckBox2.set(val);
+                }
+            }, leftColumn.pos("bl").adds(0, 2)).settip("Works for both slots");
+            leftColumn = add(autoLootCloakRobeCheckBox = new CheckBox("Cloak/Robe"){
+                {a = Utils.getprefb("autoLootCloakRobe", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootCloakRobe", val);
+                }
+            }, leftColumn.pos("bl").adds(0, 2));
+            leftColumn = add(autoLootPouchesCheckBox = new CheckBox("Pouches"){
+                {a = Utils.getprefb("autoLootCloakRobe", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootCloakRobe", val);
+                    autoLootPouchesCheckBox2.set(val);
+                }
+            }, leftColumn.pos("bl").adds(0, 2)).settip("Works for both slots");
+            leftColumn = add(autoLootPantsCheckBox = new CheckBox("Pants"){
+                {a = Utils.getprefb("autoLootPants", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootPants", val);
+                }
+            }, leftColumn.pos("bl").adds(0, 2));
+            leftColumn = add(autoLootCapeCheckBox = new CheckBox("Cape"){
+                {a = Utils.getprefb("autoLootCape", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootCape", val);
+                }
+            }, leftColumn.pos("bl").adds(0, 2));
+
+            rightColumn = add(autoLootMaskCheckBox = new CheckBox("Mask"){
+                {a = Utils.getprefb("autoLootMask", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootMask", val);
+                }
+            }, prev.pos("bl").adds(0, 4).x(200));
+            rightColumn = add(autoLootEyewearCheckBox = new CheckBox("Eyewear"){
+                {a = Utils.getprefb("autoLootEyewear", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootEyewear", val);
+                }
+            }, rightColumn.pos("bl").adds(0, 2));
+            rightColumn = add(autoLootMouthwearCheckBox = new CheckBox("Mouthwear"){
+                {a = Utils.getprefb("autoLootMouthwear", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootMouthwear", val);
+                }
+            }, rightColumn.pos("bl").adds(0, 2));
+            rightColumn = add(autoLootChestArmorCheckBox = new CheckBox("Chest Armor"){
+                {a = Utils.getprefb("autoLootChestArmor", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootChestArmor", val);
+                }
+            }, rightColumn.pos("bl").adds(0, 2));
+            rightColumn = add(new Label("Belt (nope)"), rightColumn.pos("bl").adds(19, 2)).settip("Belts can't be placed in your inventory if they got stuff in them.");
+            rightColumn = add(autoLootWeaponCheckBox2 = new CheckBox("Weapon"){
+                {a = Utils.getprefb("autoLootWeapon", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootWeapon", val);
+                    autoLootWeaponCheckBox.set(val);
+                }
+            }, rightColumn.pos("bl").adds(-19, 2)).settip("Try to move it to Belt first, then Inventory if Belt is full.");
+            rightColumn = add(autoLootRingsCheckBox2 = new CheckBox("Rings"){
+                {a = Utils.getprefb("autoLootRings", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootRings", val);
+                    autoLootRingsCheckBox.set(val);
+                }
+            }, rightColumn.pos("bl").adds(0, 2)).settip("Works for both slots");
+            rightColumn = add(autoLootBackpackCheckBox = new CheckBox("Backpack"){
+                {a = Utils.getprefb("autoLootBackpack", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootBackpack", val);
+                }
+            }, rightColumn.pos("bl").adds(0, 2));
+            rightColumn = add(autoLootPouchesCheckBox2 = new CheckBox("Pouches"){
+                {a = Utils.getprefb("autoLootCloakRobe", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootCloakRobe", val);
+                    autoLootPouchesCheckBox.set(val);
+                }
+            }, rightColumn.pos("bl").adds(0, 2)).settip("Works for both slots");
+            rightColumn = add(autoLootLegArmorCheckBox = new CheckBox("Leg Armor"){
+                {a = Utils.getprefb("autoLootLegArmor", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootLegArmor", val);
+                }
+            }, rightColumn.pos("bl").adds(0, 2));
+            rightColumn = add(autoLootShoesCheckBox = new CheckBox("Shoes"){
+                {a = Utils.getprefb("autoLootShoes", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("autoLootShoes", val);
+                }
+            }, rightColumn.pos("bl").adds(0, 2));
 
 
 			Widget backButton;
-			add(backButton = new PButton(UI.scale(200), "Back", 27, back, "Advanced Settings"), prev.pos("bl").adds(0, 18).x(0));
+			add(backButton = new PButton(UI.scale(200), "Back", 27, back, "Advanced Settings"), rightColumn.pos("bl").adds(0, 18).x(0));
 			pack();
 			centerBackButton(backButton, this);
 		}
@@ -5026,6 +5127,9 @@ public class OptWnd extends Window {
 	private static final Object autoEquipBunnySlippersPlateBootsTooltip = RichText.render("Switches your currently equipped shoes to Bunny Slippers when you right click to chase a rabbit, or Plate Boots if you click on anything else." +
 			"\n" +
 			"\n$col[185,185,185]{I suggest always using this setting in PVP.}", UI.scale(300));
+	private static final Object autoPeaceAnimalsWhenCombatStartsTooltip = RichText.render("This will automatically set your status to 'Peace' when combat is initiated with a new target (animals only). " +
+			"\nToggling this on, while in combat, will also autopeace all animals you are currently fighting." +
+			"\n\n$col[218,163,0]{Action Button:} $col[185,185,185]{This setting can also be turned on/off using an action button from the menu grid (Custom Client Extras → Toggles).}", UI.scale(320));
 	private static final Object preventUsingRawHideWhenRidingTooltip = RichText.render("This will prevent you from using Raw Hide while riding a Horse, and only allow using it when you're not mounted.", UI.scale(300));
 	private static final Object autoDrinkingTooltip = RichText.render("When your Stamina Bar goes below the set threshold, try to drink Water. If the threshold box is empty, it defaults to 75%." +
 			"\n" +

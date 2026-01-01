@@ -7,8 +7,8 @@ import java.util.Map;
 
 public class GobBeeskepHarvestInfo extends GobInfo {
 
-	private static final BufferedImage waxImage = PUtils.convolvedown(Resource.local().loadwait("customclient/wax").layer(Resource.imgc).img, UI.scale(26, 26), CharWnd.iconfilter);
-	private static final BufferedImage honeyImage = PUtils.convolvedown(Resource.local().loadwait("customclient/honey").layer(Resource.imgc).img, UI.scale(26, 26), CharWnd.iconfilter);
+    private static final BufferedImage waxImage = PUtils.convolvedown(PUtils.rasterimg(PUtils.blurmask2(Resource.local().loadwait("customclient/wax").layer(Resource.imgc).img.getRaster(), 4, 1, Color.BLACK)), UI.scale(26, 26), CharWnd.iconfilter);
+    private static final BufferedImage honeyImage = PUtils.convolvedown(PUtils.rasterimg(PUtils.blurmask2(Resource.local().loadwait("customclient/honey").layer(Resource.imgc).img.getRaster(), 4, 1, Color.BLACK)), UI.scale(26, 26), CharWnd.iconfilter);
 	private static final Map<String, Tex> contentTexCache = new HashMap<>();
 
     protected GobBeeskepHarvestInfo(Gob owner) {
@@ -43,11 +43,13 @@ public class GobBeeskepHarvestInfo extends GobInfo {
 			int rbuf = d.sdt.checkrbuf(0);
 			String key = null;
 
-			if (rbuf == 7 || rbuf == 15) {
+            // ND: 1st rbuf check is without propolis, 2nd is with propolis.
+            // ND: During winter, the hives have 2 different rbufs (3rd and 4th checks)
+			if (rbuf == 7 || rbuf == 15 || rbuf == 5 || rbuf == 13) {
 				key = "both";
-			} else if (rbuf == 6 || rbuf == 14) {
+			} else if (rbuf == 6 || rbuf == 14 || rbuf == 4 || rbuf == 12) {
 				key = "wax";
-			} else if (rbuf == 3 || rbuf == 11) {
+			} else if (rbuf == 3 || rbuf == 11 || rbuf == 1 || rbuf == 9) {
 				key = "honey";
 			} else {
 				return null;
