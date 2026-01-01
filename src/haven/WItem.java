@@ -288,6 +288,13 @@ public class WItem extends Widget implements DTarget {
 
     public boolean mousedown(MouseDownEvent ev) {
 	boolean inv = parent instanceof Inventory;
+
+	if(ev.b == 1){
+
+	}
+
+
+
 	if(ev.b == 1) {
 		if (OptWnd.useImprovedInventoryTransferControlsCheckBox.a && ui.modmeta && !ui.modctrl) {
 			if (inv) {

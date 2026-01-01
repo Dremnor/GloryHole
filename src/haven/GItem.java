@@ -28,6 +28,7 @@ package haven;
 
 import java.util.*;
 
+import haven.automated.alchemybook.AlchemyService;
 import haven.automated.cookbook.FoodService;
 import haven.render.*;
 import haven.res.ui.tt.q.qbuff.QBuff;
@@ -221,6 +222,7 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 		try {
 			if (FoodService.isValidEndpoint() && !checkForHempBuff()) {
 				FoodService.checkFood(info, getres());
+				AlchemyService.checkAlchemying(info, getres());
 			}
 		} catch (Exception ignored) {}
 	}

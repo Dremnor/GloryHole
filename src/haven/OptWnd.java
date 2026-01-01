@@ -4363,6 +4363,9 @@ public class OptWnd extends Window {
 	public static TextEntry cookBookEndpointTextEntry;
 	public static TextEntry cookBookTokenTextEntry;
 
+	public static TextEntry alchemyBookEndpointTextEntry;
+	public static TextEntry	alchemyBookTokenTextEntry;
+
 
 
 	public class ServerIntegrationSettingsPanel extends Panel {
@@ -4419,6 +4422,23 @@ public class OptWnd extends Window {
 					super.changed();
 				}
 			}, prev.pos("ur").adds(20, 0));
+			prev = add(new Label("Alchemy Book Integration"), prev.pos("bl").adds(0, 26).x(110));
+			prev = add(new Label("Alchemy Endpoint:"), prev.pos("bl").adds(0, 16).x(0));
+			prev = add(alchemyBookEndpointTextEntry = new TextEntry(UI.scale(220), Utils.getpref("alchemyEndpoint", "")){
+				protected void changed() {
+					Utils.setpref("alchemyEndpoint", this.buf.line());
+					super.changed();
+				}
+			}, prev.pos("ur").adds(6, 0));
+			prev = add(new Label("Alchemy Token:"), prev.pos("bl").adds(0, 8).x(0));
+			prev = add(alchemyBookTokenTextEntry = new TextEntry(UI.scale(220), Utils.getpref("alchemyToken", "")){
+				protected void changed() {
+					Utils.setpref("alchemyToken", this.buf.line());
+					super.changed();
+				}
+			}, prev.pos("ur").adds(20, 0));
+
+
 
 			Widget backButton;
 			add(backButton = new PButton(UI.scale(200), "Back", 27, back, "Advanced Settings"), prev.pos("bl").adds(0, 26).x(0));

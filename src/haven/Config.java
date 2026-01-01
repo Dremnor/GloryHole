@@ -40,7 +40,7 @@ public class Config {
     public static final String confid = "GloryHole";
     public static final Variable<Boolean> par = Variable.def(() -> true);
     public final Properties localprops = getlocalprops();
-	public static final String clientVersion = "v1.0.1";
+	public static final String clientVersion = "v1.0.1a";
 	public static String githubLatestVersion = "Loading...";
 
     private static Config global = null;
