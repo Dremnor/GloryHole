@@ -321,6 +321,9 @@ public class AlchemyService {
                 ingredients.add(expandedName);
             }
 
+            // SORTUJ główną recepturę alfabetycznie!
+            Collections.sort(ingredients);
+
         } catch (Exception e) {
             if (alchemyDebug) e.printStackTrace();
         }
@@ -361,6 +364,10 @@ public class AlchemyService {
                 for (Object subSpec : subInputs) {
                     subNames.add(expandRecipeSpec(subSpec));
                 }
+
+                // SORTUJ alfabetycznie!
+                Collections.sort(subNames);
+
                 // Zwróć nazwę z listą składników
                 return itemName + " (" + String.join(", ", subNames) + ")";
             }

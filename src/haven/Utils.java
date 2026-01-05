@@ -530,7 +530,7 @@ public class Utils {
 	    try {
 		got = String.valueOf(this.got);
 	    } catch(Throwable t) {
-		got = "!formatting error (" + t + ")";
+		got = "!formatting error (" + this.got.getClass() + ", " + t + ")";
 	    }
 	    return(String.format("expected %s, got %s", expected, got));
 	}
@@ -556,6 +556,14 @@ public class Utils {
 	if(arg instanceof List)
 	    return((List<?>)arg);
 	throw(new ArgumentFormatException("object-list", arg));
+    }
+
+    public static Object[] oav(Object arg) {
+	if(arg instanceof Object[])
+	    return((Object[])arg);
+	if(arg instanceof List)
+	    return(((List<?>)arg).toArray(new Object[0]));
+	throw(new ArgumentFormatException("object-array", arg));
     }
 
     public static int iv(Object arg) {
@@ -2722,13 +2730,15 @@ public class Utils {
     }
 
     public static boolean aggro(GameUI gui, long gobid) {
-        Gob gob = gui.map.glob.oc.getgob(gobid);
-        if (gob != null && gui != null && gui.map != null) {
-            gui.act("aggro");
-            gui.map.wdgmsg("click", Coord.z, gob.rc.floor(OCache.posres), 1, 0, 0, (int) gob.id,
-                    gob.rc.floor(OCache.posres), 0, -1);
-            gui.map.wdgmsg("click", Coord.z, gui.map.player().rc.floor(OCache.posres), 3, 0);
-            return true;
+        if (gui != null && gui.map != null) {
+            Gob gob = gui.map.glob.oc.getgob(gobid);
+            if (gob != null && gui.map.player() != null) {
+                gui.act("aggro");
+                gui.map.wdgmsg("click", Coord.z, gob.rc.floor(OCache.posres), 1, 0, 0, (int) gob.id,
+                        gob.rc.floor(OCache.posres), 0, -1);
+                gui.map.wdgmsg("click", Coord.z, gui.map.player().rc.floor(OCache.posres), 3, 0);
+                return true;
+            }
         }
         return false;
     }
