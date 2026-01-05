@@ -22,7 +22,7 @@ public class Grainslot extends Widget implements DTarget, ItemInfo.Owner {
 	int w = UI.scale(45), m = UI.scale(5);
 	ebtn = adda(new Button(w, "Empty", () -> wdgmsg("empty")), sz.x-UI.scale(5), sz.y / 2, 1.0, 0.5);
 	tbtn = adda(new Button(w, "Take", () -> wdgmsg("take")), ebtn.c.x - m, sz.y / 2, 1.0, 0.5);
-	pbtn = adda(new Button(w, "Put", () -> wdgmsg("drop", ui.modflags())), tbtn.c.x - m, sz.y / 2, 1.0, 0.5);
+	pbtn = adda(new Button(w, "Put", () -> wdgmsg("put")), tbtn.c.x - m, sz.y / 2, 1.0, 0.5);
 	ebtn.hide(); tbtn.hide(); pbtn.hide();
 	FarmingStatic.grainSlots.add(this);
     }
