@@ -33,12 +33,13 @@ import java.awt.Color;
 import java.util.Map.Entry;
 
 public class Partyview extends Widget {
-    public static final int marg = UI.scale(4);
+    public static final int marg = UI.scale(1);
     public final Party party;
     public final long ign;
     private final Button leave;
     private Map<Member, MemberView> avs = Collections.emptyMap();
     private Map<Long, Member> om = null;
+    public static Color myColor = Color.WHITE;
 
     @RName("pv")
     public static class $_ implements Factory {
@@ -48,10 +49,10 @@ public class Partyview extends Widget {
     }
 
     Partyview(Party party, long ign) {
-	super(Coord.of(Avaview.dasz.x + Window.wbox.bisz().x, 140));
+	super(Coord.of(UI.scale(111) + Window.wbox.bisz().x, 130));
 	this.party = party;
 	this.ign = ign;
-	this.leave = add(new Button(sz.x, "Leave"), Coord.z);
+	this.leave = add(new Button(sz.x, "Leave Party"), Coord.z);
 	this.leave.settip("Leave party");
 	pack();
 	this.leave.hide();
@@ -99,7 +100,7 @@ public class Partyview extends Widget {
     }
 
     private void update() {
-	int asz = (sz.x - marg) / 2;
+	int asz = (sz.x - 2 * marg) / 3;
 	if(party.memb != this.om) {
 	    Map<Member, MemberView> old = new HashMap<>(this.avs);
 	    Map<Member, MemberView> avs = null;
@@ -121,16 +122,23 @@ public class Partyview extends Widget {
 	    Collections.sort(order, Comparator.comparing(m -> m.seq));
 	    int i = 0;
 	    for(Member m : order) {
-		avs.get(m).move(leave.pos("bl").add((i % 2) * (sz.x - asz), (i / 2) * (asz + marg) + marg));
+		avs.get(m).move(leave.pos("bl").add((i % 3) * (asz + marg),(i / 3) * (asz + marg) + marg));
 		i++;
 	    }
 	    this.om = party.memb;
 	    this.avs = avs;
 	    if(leave.show(!avs.isEmpty()))
 		pack();
+        if (ui != null && ui.gui != null) {
+            ui.sess.glob.oc.gobAction(Gob::updatePartyCircleOverlay);
+            ui.sess.glob.oc.gobAction(Gob::updatePartyHighlightOverlay);
+        }
 	}
 	for(Map.Entry<Member, MemberView> e : avs.entrySet())
 	    e.getValue().color = e.getKey().col;
+    if (party.memb.size() == 1) {
+        myColor = Color.WHITE;
+    }
     }
 
     public void tick(double dt) {
@@ -169,14 +177,29 @@ public class Partyview extends Widget {
 	    for(int a = 0; a < args.length; a++) {
 		long id = Utils.uiv(args[a]);
 		Member m = cmemb.get(id);
-		if(m == null)
-		    m = party.new Member(id);
+		if(m == null) {
+            m = party.new Member(id);
+            if (party.leader != null && party.leader.gobid == ui.gui.map.plgob) {
+                Map<String, ChatUI.MultiChat> chats = ui.gui.chat.getMultiChannels();
+                if (chats.get("Party") != null) {
+                    chats.get("Party").send(party.encodeMarkerListMessage());
+                }
+            }
+
+        }
 		nmemb.put(id, m);
 	    }
 	    party.memb = nmemb;
 	    updsteam();
+	    if (ui != null && ui.gui != null) {
+		ui.sess.glob.oc.gobAction(Gob::updateLeaderPingArrow);
+	    }
 	} else if(msg == "ldr") {
 	    party.leader = party.memb.get(Utils.uiv(args[0]));
+        if (ui != null && ui.gui != null) {
+            ui.sess.glob.oc.gobAction(Gob::updatePartyCircleOverlay);
+            ui.sess.glob.oc.gobAction(Gob::updatePartyHighlightOverlay);
+        }
 	} else if(msg == "m") {
 	    int a = 0;
 	    Member m = party.memb.get(Utils.uiv(args[a++]));
@@ -184,8 +207,12 @@ public class Partyview extends Widget {
 		Coord2d c = null;
 		if((a < args.length) && (args[a] instanceof Coord))
 		    c = ((Coord)args[a++]).mul(OCache.posres);
-		if((a < args.length) && (args[a] instanceof Color))
+		if((a < args.length) && (args[a] instanceof Color)){
 		    m.col = (Color)args[a++];
+            if (m.gobid == ui.gui.plid && party.memb.size() > 1) {
+                myColor = m.col;
+            }
+        }
 		m.setc(c);
 	    }
 	} else if(msg == "pid") {
@@ -201,6 +228,19 @@ public class Partyview extends Widget {
 	 * until then, at least clear it when logging out. */
 	party.memb = Collections.emptyMap();
 	party.leader = null;
+
+	if (GameUI.leaderTargetPing != -1 && ui != null && ui.gui != null) {
+	    Gob target = ui.sess.glob.oc.getgob(GameUI.leaderTargetPing);
+	    if (target != null) {
+		target.removeLeaderPingArrow();
+	    }
+	    GameUI.leaderTargetPing = -1;
+	}
+
+        if (ui != null && ui.gui != null) {
+            ui.sess.glob.oc.gobAction(Gob::updatePartyCircleOverlay);
+            ui.sess.glob.oc.gobAction(Gob::updatePartyHighlightOverlay);
+        }
 	super.dispose();
     }
 }

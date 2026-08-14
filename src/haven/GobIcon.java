@@ -37,10 +37,9 @@ import java.util.function.*;
 import java.io.*;
 import java.nio.file.*;
 import java.awt.image.*;
+import haven.iosys.tk.*;
 import java.awt.Color;
 import java.util.stream.Collectors;
-import javax.swing.JFileChooser;
-import javax.swing.filechooser.*;
 
 public class GobIcon extends GAttrib {
     public static int size = UI.scale(Utils.getprefi("mapIconsSize", 20));
@@ -76,24 +75,18 @@ public class GobIcon extends GAttrib {
 	public abstract BufferedImage image();
 	public abstract void draw(GOut g, Coord cc);
 	public abstract boolean checkhit(Coord c);
+	public Object[] info(ItemInfo.Owner owner) {return(new Object[] {new Object[] {new ItemInfo.Name.Default()}});}
 	public Object[] id() {return(nilid);}
 	public int z() {return(0);}
 	public Markable markable() {return(Markable.UNMARKABLE);}
+
+	public boolean hover(Coord c, boolean hovering) {return(false);}
 
 	@Resource.PublishedCode(name = "mapicon")
 	public static interface Factory {
 	    public Icon create(OwnerContext owner, Resource res, Message sdt);
 	    public Collection<? extends Icon> enumerate(OwnerContext owner, Resource res, Message sdt);
 	}
-
-		public String tooltip() {
-			String tt = name();
-			try {
-				Resource.Tooltip name = res.layer(Resource.tooltip);
-				tt = (name == null) ? res.name : name.t;
-			} catch (Resource.Loading ignored) {}
-			return tt;
-		}
     }
 
     public static class Image {
@@ -111,7 +104,7 @@ public class GobIcon extends GAttrib {
 	    Resource.Image rimg = res.layer(Resource.imgc);
 	    BufferedImage img = rimg.scaled();
 	    Tex tex = rimg.tex();
-	    if ((tex.sz().x > size) || (tex.sz().y > size)) {
+	    if(((tex.sz().x > size) || (tex.sz().y > size)) && !Utils.bv(rimg.info.getOrDefault("mm/noscale", 0))) {
 		BufferedImage buf = rimg.img;
 		buf = PUtils.rasterimg(PUtils.blurmask2(buf.getRaster(), 1, 1, Color.BLACK));
 		Coord tsz;
@@ -165,7 +158,7 @@ public class GobIcon extends GAttrib {
 
 	public void draw(GOut g, Coord cc) {
 		if (img.tex.sz().x != size || img.tex.sz().y != size) {
-			Resource.Image rimg = res.layer(Resource.imgc);
+			Resource.Image rimg = img.res.layer(Resource.imgc);
 			BufferedImage imgScaled = rimg.scaled();
 			BufferedImage buf = imgScaled;
 			buf = PUtils.rasterimg(PUtils.blurmask2(buf.getRaster(), 1, 1, Color.BLACK));
@@ -416,9 +409,14 @@ public class GobIcon extends GAttrib {
 	    public boolean save = false, adv = false;
 	    public Integer tag = null;
 	    private final Collection<Icon> advbuf = new ArrayList<>();
+	    private final boolean cached;
 	    private ResID r = null;
 	    private Loader next = null;
 	    private Map<Setting.ID, Setting> nset = null;
+
+	    public Loader(boolean cached) {
+		this.cached = cached;
+	    }
 
 	    private void merge(Setting set, Setting conf) {
 		set.show    = conf.show;
@@ -445,20 +443,29 @@ public class GobIcon extends GAttrib {
 			r = null;
 			continue;
 		    }
-		    Icon.Factory fac = getfac(res);
-		    for(Icon icon : fac.enumerate(Settings.this, res, new MessageBuf(r.data))) {
-			Setting set = new Setting(icon, r);
-			Setting def = defaults.get(r);
-			if(def != null)
-			    merge(set, def);
-			Setting prev = nset.get(set.id);
-			if((prev == null) || (prev.res.ver < set.res.ver)) {
-			    if(prev != null)
-				merge(set, prev);
-			    else
-				advbuf.add(icon);
-			    nset.put(set.id, set);
+		    Icon.Factory fac;
+		    try {
+			fac = getfac(res);
+			for(Icon icon : fac.enumerate(Settings.this, res, new MessageBuf(r.data))) {
+			    Setting set = new Setting(icon, r);
+			    Setting def = defaults.get(r);
+			    if(def != null)
+				merge(set, def);
+			    Setting prev = nset.get(set.id);
+			    if((prev == null) || (prev.res.ver < set.res.ver)) {
+				if(prev != null)
+				    merge(set, prev);
+				else
+				    advbuf.add(icon);
+				nset.put(set.id, set);
+			    }
 			}
+		    } catch(Resource.BadVersionException | LinkageError e) {
+			if(!cached)
+			    throw(e);
+			new Warning(e, "Could not re-load saved icon " + res).issue();
+			r = null;
+			continue;
 		    }
 		    Collection<Setting> sets = resolve.remove(r);
 		    if(sets != null) {
@@ -516,7 +523,7 @@ public class GobIcon extends GAttrib {
 		ResID id = new ResID(res, data);
 		Setting def = new Setting(res, Icon.nilid);
 		def.show = def.defshow = Utils.bv(args[a++]);
-		Loader l = new Loader();
+		Loader l = new Loader(false);
 		l.save = true;
 		l.adv = true;
 		l.tag = tag;
@@ -526,7 +533,7 @@ public class GobIcon extends GAttrib {
 	    } else if(args[1] instanceof Object[]) {
 		Object[] sub = (Object[])args[1];
 		int a = 0;
-		Loader l = new Loader();
+		Loader l = new Loader(false);
 		l.save = true;
 		l.tag = tag;
 		Collection<GobIcon.Setting> csets = new ArrayList<>();
@@ -616,7 +623,7 @@ public class GobIcon extends GAttrib {
 	    Map<Object, Object> root = Utils.mapdecn(blob.tto());
 	    this.tag = Utils.iv(root.get("tag"));
 	    this.notify = Utils.bv(root.getOrDefault("notify", 0));
-	    Loader l = new Loader();
+	    Loader l = new Loader(true);
 	    for(Object eicon : (Object[])root.get("icons")) {
 		Map<Object, Object> icon = Utils.mapdecn(eicon);
 		Object[] eres = (Object[])icon.get("res");
@@ -810,7 +817,7 @@ public class GobIcon extends GAttrib {
 
 	    protected boolean searchmatch(ListIcon icon, String text) {
 		return((icon.name != null) &&
-		       (icon.name.toLowerCase().indexOf(text.toLowerCase()) >= 0));
+		       Fuzzy.fuzzyContains(icon.name.toLowerCase(Locale.ROOT), text.toLowerCase(Locale.ROOT)));
 	    }
 
 		@Override
@@ -938,27 +945,31 @@ public class GobIcon extends GAttrib {
 		protected List<NotificationSetting> items() {return(items);}
 		protected Widget makeitem(NotificationSetting item, int idx, Coord sz) {return(SListWidget.TextItem.of(sz, Text.std, () -> item.name));}
 
-		private void selectwav() {
-		    java.awt.EventQueue.invokeLater(() -> {
-			    JFileChooser fc = new JFileChooser();
-			    fc.setFileFilter(new FileNameExtensionFilter("PCM wave file", "wav"));
-			    if(fc.showOpenDialog(null) != JFileChooser.APPROVE_OPTION)
-				return;
+		private void selectwav(NotificationSetting prev) {
+		    FilePicker dialog = ui.wnd.toolkit().picker().make(FilePicker.Mode.OPEN, ui.wnd);
+		    dialog.filter("PCM wave file", "wav");
+		    dialog.show().map(path -> {
+			Debug.dump(path, prev.name);
+			if(path == null) {
+			    super.change(prev);
+			} else {
 			    for(Iterator<NotificationSetting> i = items.iterator(); i.hasNext();) {
 				NotificationSetting item = i.next();
 				if(item.wav != null)
 				    i.remove();
 			    }
-			    NotificationSetting ws = new NotificationSetting(fc.getSelectedFile().toPath());
+			    NotificationSetting ws = new NotificationSetting(path);
 			    items.add(items.indexOf(NotificationSetting.other), ws);
 			    change(ws);
-			});
+			}
+		    }).report(ui);
 		}
 
 		public void change(NotificationSetting item) {
+		    NotificationSetting prev = sel;
 		    super.change(item);
 		    if(item == NotificationSetting.other) {
-			selectwav();
+			selectwav(prev);
 		    } else {
 			conf.resns = item.res;
 			conf.filens = item.wav;
@@ -1084,15 +1095,16 @@ public class GobIcon extends GAttrib {
 		newPresetName = new TextEntry(UI.scale(120), ""){
 			public boolean keydown(KeyDownEvent e) {
 				if(e.awt.getKeyCode() == KeyEvent.VK_ESCAPE) {
-					setfocus(SettingsWindow.this.cont);
-				}
-				return(buf.key(e.awt));
+					setfocus(SettingsWindow.this.list);
+					return(true);
+				} else
+					return(buf.key(e.awt));
 			}
 		};
 		left.last(new Button(UI.scale(170), "Save New Preset", false).action(() -> {
 			if (newPresetName.text().equals(""))
 				ui.gui.error("Please set a name for the new map icons preset!");
-			else if (newPresetName.text().trim().length() == 0)
+			else if (newPresetName.text().trim().isEmpty())
 				ui.gui.error("Brother don't just use a bunch of spaces as the preset name, that's stupid. Give it a nice name.");
 			else if (mapIconPresets.keySet().stream().anyMatch(newPresetName.text()::equals)) {
 //					ui.gui.error("A preset named " + "\"" + newPresetName.text() + "\"" + " already exists. Please choose a different name, or delete the old one.");
@@ -1142,12 +1154,13 @@ public class GobIcon extends GAttrib {
 				};
 				ui.gui.add(confirmOverwriteWnd, new Coord((ui.gui.sz.x - confirmOverwriteWnd.sz.x) / 2, (ui.gui.sz.y - confirmOverwriteWnd.sz.y*3) / 2));
 				confirmOverwriteWnd.show();
+				setfocus(SettingsWindow.this.list);
 			} else {
 				iconCategoriesList.change(GobIconCategoryList.GobCategory.ALL);
-
 				if (future != null)
 					future.cancel(true);
 				future = executor.scheduleWithFixedDelay(this::savePreset, 200, 300, TimeUnit.MILLISECONDS);
+				setfocus(SettingsWindow.this.list);
 			}
 		}), UI.scale(10));
 
@@ -1233,7 +1246,7 @@ public class GobIcon extends GAttrib {
 
 	public static void load() {
 		mapIconPresets.clear();
-		File config = new File(haven.MainFrame.gameDir + "MapIconsPresets/yourSavedPresets");
+		File config = new File(haven.Client.gameDir + "MapIconsPresets/yourSavedPresets");
 		if (!config.exists()) {
 			defaultPresets();
 		} else {
@@ -1260,12 +1273,12 @@ public class GobIcon extends GAttrib {
 
 	public static void defaultPresets() {
 		mapIconPresets.clear();
-		loadPresetsFromFile(new File(haven.MainFrame.gameDir + "MapIconsPresets/defaultPresets"));
+		loadPresetsFromFile(new File(haven.Client.gameDir + "MapIconsPresets/defaultPresets"));
 	}
 
 	public static void savePresetsToFile() {
 		try {
-			BufferedWriter bw = Files.newBufferedWriter(Paths.get(new File(haven.MainFrame.gameDir + "MapIconsPresets/yourSavedPresets").toURI()), StandardCharsets.UTF_8);
+			BufferedWriter bw = Files.newBufferedWriter(Paths.get(new File(haven.Client.gameDir + "MapIconsPresets/yourSavedPresets").toURI()), StandardCharsets.UTF_8);
 			for (int x = 1; x < mapIconPresets.keySet().size(); x++) { // ND: Start at 1, cause 0 is always an empty string added in the code when settings are loaded
 				String presetName = ((String) mapIconPresets.keySet().toArray()[x]);
 				StringBuilder enabledIcons = new StringBuilder();

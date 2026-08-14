@@ -22,6 +22,7 @@ public class AUtils {
         add("gfx/kritter/badger/badger");
         add("gfx/kritter/bat/bat");
         add("gfx/kritter/bear/bear");
+        add("gfx/kritter/bear/polarbear");
         add("gfx/kritter/beaver/beaver");
         add("gfx/kritter/boar/boar");
         add("gfx/kritter/boreworm/boreworm");
@@ -57,6 +58,9 @@ public class AUtils {
         add("gfx/kritter/woodgrouse/woodgrouse-m");
         add("gfx/kritter/garefowl/garefowl");
         add("gfx/kritter/goshawk/goshawk");
+        add("gfx/kritter/narwhal/narwhal");
+        add("gfx/kritter/crane/crane");
+        add("gfx/kritter/woodscorpion/woodscorpion");
 
         add("gfx/kritter/ants/queenant");
         add("gfx/kritter/ants/royalguardant");
@@ -285,72 +289,6 @@ public class AUtils {
             }
         }
         return gobs;
-    }
-
-    public static ArrayList<Gob> getGobsInSelectionStartingWith(String name, Coord start, Coord end, GameUI gui) {
-        ArrayList<Gob> selected = new ArrayList<>();
-        synchronized (gui.map.glob.oc) {
-            for (Gob gob : gui.map.glob.oc) {
-                if (gob.rc.x > start.x && gob.rc.x < end.x && gob.rc.y > start.y && gob.rc.y < end.y) {
-                    try {
-                        Resource res = gob.getres();
-                        if (res != null && res.name.startsWith(name)) {
-                            selected.add(gob);
-                        }
-                    } catch (Loading l) {
-                    }
-                }
-            }
-        }
-        return selected;
-    }
-
-    public static Gob getClosestCropInSelectionStartingWith(String name, Coord start, Coord end, GameUI gui, int stageP) {
-        Gob closestGob = null;
-        double minDist = Double.MAX_VALUE;
-        Coord2d player = gui.map.player().rc;
-
-        synchronized (gui.map.glob.oc) {
-            for (Gob gob : gui.map.glob.oc) {
-                if (gob.rc.x > start.x && gob.rc.x < end.x && gob.rc.y > start.y && gob.rc.y < end.y) {
-                    try {
-                        Resource res = gob.getres();
-                        if (res != null && res.name.equals(name)) {
-                            int stage = AUtils.getDrawState(gob);
-                            double dist = player.dist(gob.rc);
-                            if(dist < minDist && (stage >= stageP)) {
-                                minDist = dist;
-                                closestGob = gob;
-                            }
-                        }
-                    } catch (Loading l) {
-                    }
-                }
-            }
-        }
-        return closestGob;
-    }
-
-    public static int getDrawState(Gob gob) {
-        try {
-            return gob.getattr(ResDrawable.class).sdt.checkrbuf(0);
-        } catch (NullPointerException | Loading e) {
-            System.out.println(e.getClass() + " when trying to get drawstate from gob " + gob.id);
-        }
-        return 0;
-    }
-
-    public static void rightClickGob(GameUI gui, Gob gob, int mods) {
-        gui.map.wdgmsg("click", Coord.z, gob.rc.floor(posres), 3, mods, 0, (int) gob.id, gob.rc.floor(posres), 0, -1);
-    }
-
-    public static boolean isPlayerInSelectedArea(Coord start, Coord end, GameUI gui) {
-        try {
-            Coord2d player = gui.map.player().rc;
-            return player.x > start.x && player.x < end.x && player.y > start.y && player.y < end.y;
-        } catch (Exception e){
-            return false;
-        }
     }
 
     public static void drinkTillFull(GameUI gui, double threshold, double stoplevel) throws InterruptedException {

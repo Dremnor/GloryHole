@@ -28,16 +28,19 @@ package haven;
 
 import haven.automated.mapper.MappingClient;
 import haven.render.*;
-import haven.res.gfx.fx.msrad.MSRad;
+import haven.res.sfx.ambient.weather.wsound.WeatherSound;
 import haven.res.ui.pag.toggle.Toggle;
 import haven.resutil.Ridges;
 import haven.sprites.AggroCircleSprite;
+import haven.sprites.ChaseVectorSprite;
+import haven.sprites.PartyCircleSprite;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import java.awt.*;
+import java.util.function.*;
 import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -52,9 +55,7 @@ public class OptWnd extends Window {
     public final Panel main;
 	public final Panel advancedSettings;
     public Panel current;
-	private static final ScheduledExecutorService simpleUIExecutor = Executors.newSingleThreadScheduledExecutor();
-	private static Future<?> simpleUIFuture;
-	public static boolean simpleUIChanged = false;
+	private PButton videoButton, audioButton, keybindButton;
 	private static final ScheduledExecutorService skyboxExecutor = Executors.newSingleThreadScheduledExecutor();
 	private static Future<?> skyboxFuture;
 	public static final Color msgGreen = new Color(8, 211, 0);
@@ -64,7 +65,6 @@ public class OptWnd extends Window {
 	public static FlowerMenuAutoSelectManagerWindow flowerMenuAutoSelectManagerWindow;
 	public static AutoDropManagerWindow autoDropManagerWindow;
 	AlarmWindow alarmWindow;
-	public static GSettings currentgprefs;
 	public static final Map<String, Color> improvedOpeningsImageColor =	new ConcurrentHashMap<>(4);
 
     public void chpanel(Panel p) {
@@ -83,25 +83,51 @@ public class OptWnd extends Window {
     }
 
     public class PButton extends Button {
-	public final Panel tgt;
+	public final Supplier<Panel> tgt;
 	public final int key;
+	private Panel actual = null;
 	public String newCap; // ND: Used to change the title of the options window
 
-//	public PButton(int w, String title, int key, Panel tgt) {
-//	    super(w, title, false);
-//	    this.tgt = tgt;
-//	    this.key = key;
-//	}
+    public PButton(int w, String title, int key, Supplier<Panel> tgt) {
+        super(w, title, false);
+        this.tgt = tgt;
+        this.key = key;
+    }
 
-	public PButton(int w, String title, int key, Panel tgt, String newCap) {
-		super(w, title, false);
-		this.tgt = tgt;
-		this.key = key;
-		this.newCap = newCap;
+	public PButton(int w, String title, int key, Panel tgt) {
+	    super(w, title, false);
+	    this.tgt = null;
+	    this.key = key;
+	    this.actual = tgt;
+	}
+
+    public PButton(int w, String title, int key, Panel tgt, String newCap) {
+        super(w, title, false);
+        this.tgt = null;
+        this.key = key;
+        this.actual = tgt;
+        this.newCap = newCap;
+    }
+
+        public PButton(int w, String title, int key, Supplier<Panel> tgt, String newCap) {
+            super(w, title, false);
+            this.tgt = tgt;
+            this.key = key;
+            this.newCap = newCap;
+        }
+
+	private Panel getpanel() {
+	    if(actual == null)
+		actual = OptWnd.this.add(tgt.get(), Coord.z);
+	    return(actual);
+	}
+
+	public void preload() {
+	    getpanel();
 	}
 
 	public void click() {
-	    chpanel(tgt);
+	    chpanel(getpanel());
 		OptWnd.this.cap = newCap;
 	}
 
@@ -131,9 +157,10 @@ public class OptWnd extends Window {
 	private final Widget back;
 	private CPanel curcf;
 
-	public VideoPanel(Panel prev) {
+	public VideoPanel(UI ui, Panel prev) {
 	    super();
 		back = add(new PButton(UI.scale(200), "Back", 27, prev, "Options            "));
+        resetcf(ui);
 		pack(); // ND: Fixes top bar not being fully draggable the first time I open the video panel. Idfk.
 	}
 
@@ -273,7 +300,7 @@ public class OptWnd extends Window {
 				    error(e.getMessage());
 				    return;
 				}
-				resetcf();
+				resetcf(ui);
 			    }
 			};
 		    prev = grp.add("Global", prev.pos("bl").adds(5, 2));
@@ -336,7 +363,7 @@ public class OptWnd extends Window {
 				if(!done[0])
 				    return;
 				try {
-				    ui.setgprefs(prefs = prefs.update(null, prefs.syncmode, JOGLPanel.SyncMode.values()[btn]));
+				    ui.setgprefs(prefs = prefs.update(null, prefs.syncmode, GSettings.SyncMode.values()[btn]));
 				} catch(GSettings.SettingException e) {
 				    error(e.getMessage());
 				    return;
@@ -409,11 +436,11 @@ public class OptWnd extends Window {
 
 	public void draw(GOut g) {
 	    if((curcf == null) || (ui.gprefs != curcf.prefs))
-		resetcf();
+		resetcf(ui);
 	    super.draw(g);
 	}
 
-	private void resetcf() {
+	private void resetcf(UI ui) {
 	    if(curcf != null)
 		curcf.destroy();
 	    curcf = add(new CPanel(ui.gprefs), 0, 0);
@@ -425,20 +452,30 @@ public class OptWnd extends Window {
 	public static HSlider instrumentsSoundVolumeSlider;
 	public static HSlider clapSoundVolumeSlider;
 	public static HSlider quernSoundVolumeSlider;
+    public static HSlider swooshSoundVolumeSlider;
+    public static HSlider grammophoneHatSoundVolumeSlider;
+    public static HSlider creakSoundVolumeSlider;
+    public static HSlider waterSplashSoundVolumeSlider;
 	public static HSlider cauldronSoundVolumeSlider;
 	public static HSlider squeakSoundVolumeSlider;
 	public static HSlider butcherSoundVolumeSlider;
 	public static HSlider whiteDuckCapSoundVolumeSlider;
+    public static HSlider chippingSoundVolumeSlider;
+    public static HSlider miningSoundVolumeSlider;
+    public static HSlider doomBellCapSoundVolumeSlider;
 	private final int audioSliderWidth = 220;
-	public static HSlider themeSongVolumeSlider;
+	public static HSlider customClientMusicVolumeSlider;
+    public static HSlider weatherSoundVolumeSlider;
+    public static HSlider knarrSoundVolumeSlider;
 
     public class AudioPanel extends Panel {
-	public AudioPanel(Panel back) {
-		Widget leftColumn, rightColumn;
-		leftColumn = add(new Label("Master audio volume"), 179, 0);
-		leftColumn = add(new HSlider(UI.scale(460), 0, 1000, (int)(Audio.volume * 1000)) {
+	public AudioPanel(UI ui, Panel back) {
+        Widget leftColumn, rightColumn;
+	    Audio.Root sys = ui.audio.sys;
+        leftColumn = add(new Label("Master audio volume"), UI.scale(179, 0));
+        leftColumn = add(new HSlider(UI.scale(460), 0, 1000, (int)(sys.volume() * 1000)) {
 		    public void changed() {
-			Audio.setvolume(val / 1000.0);
+			sys.volume(val / 1000.0);
 		    }
 		}, leftColumn.pos("bl").adds(0, 2).x(0));
 
@@ -454,23 +491,18 @@ public class OptWnd extends Window {
 		}, leftColumn.pos("bl").adds(0, 2));
 
 
-		leftColumn = add(new Label("Background Music Volume (Custom Client)"), leftColumn.pos("bl").adds(0, 5));
-		leftColumn = add(themeSongVolumeSlider = new HSlider(UI.scale(220), 0, 100, Utils.getprefi("themeSongVolume", 40)) {
+		leftColumn = add(new Label("Custom Client Music Volume (In-game)"), leftColumn.pos("bl").adds(0, 5));
+		leftColumn = add(customClientMusicVolumeSlider = new HSlider(UI.scale(220), 0, 100, Utils.getprefi("customClientMusicVolume", 40)) {
 			protected void attach(UI ui) {
 				super.attach(ui);
 			}
 			public void changed() { // ND: I hate hardcoding stuff but OH WELL
-				if (LoginScreen.mainThemeClip != null) ((Audio.VolAdjust) LoginScreen.mainThemeClip).vol = val/100d;
-				if (LoginScreen.charSelectThemeClip != null) ((Audio.VolAdjust) LoginScreen.charSelectThemeClip).vol = val/100d;
 				if (GameUI.cabinThemeClip != null) ((Audio.VolAdjust) GameUI.cabinThemeClip).vol = val/100d;
 				if (GameUI.caveThemeClip != null) ((Audio.VolAdjust) GameUI.caveThemeClip).vol = val/100d;
 				if (GameUI.fishingThemeClip != null) ((Audio.VolAdjust) GameUI.fishingThemeClip).vol = val/100d;
 				if (GameUI.hookahThemeClip != null) ((Audio.VolAdjust) GameUI.hookahThemeClip).vol = val/100d;
 				if (GameUI.feastingThemeClip != null) ((Audio.VolAdjust) GameUI.feastingThemeClip).vol = val/100d;
-
-				if (LoginScreen.themeSongVolumeSlider != null) LoginScreen.themeSongVolumeSlider.val = val;
-				if (Charlist.themeSongVolumeSlider != null) Charlist.themeSongVolumeSlider.val = val;
-				Utils.setprefi("themeSongVolume", val);
+				Utils.setprefi("customClientMusicVolume", val);
 			}
 		}, leftColumn.pos("bl").adds(0, 2));
 		leftColumn = add(new Label("Background Music Theme:"), leftColumn.pos("bl").adds(0, 6).x(0));
@@ -499,7 +531,7 @@ public class OptWnd extends Window {
 						Utils.setprefi("backgroundMusicTheme", i);
 					}
 				}
-				GameUI.settingStopAllThemes();
+				GameUI.settingStopAllThemes(ui);
 			}
 		}, leftColumn.pos("ur").adds(0, 1));
 
@@ -526,35 +558,47 @@ public class OptWnd extends Window {
 			}
 		}, rightColumn.pos("bl").adds(0, 2));
 
-	    leftColumn = add(new Label("Audio latency"), leftColumn.pos("bl").adds(195, 15));
+        rightColumn = add(new Label("Weather Sound Volume"), rightColumn.pos("bl").adds(0, 5));
+        rightColumn = add(weatherSoundVolumeSlider = new HSlider(UI.scale(audioSliderWidth), 0, 100, Utils.getprefi("weatherSoundVolume", 30)) {
+            protected void attach(UI ui) {
+                super.attach(ui);
+            }
+            public void changed() {
+                Utils.setprefi("weatherSoundVolume", val);
+                WeatherSound.volumeUpdated = true;
+            }
+        }, rightColumn.pos("bl").adds(0, 2));
+
+	    leftColumn = add(new Label("Audio latency"), leftColumn.pos("bl").adds(195, 20));
 		leftColumn.tooltip = audioLatencyTooltip;
 	    {
 		Label dpy = new Label("");
 		addhlp(leftColumn.pos("bl").adds(0, 2).x(0), UI.scale(5),
-			leftColumn = new HSlider(UI.scale(460-40), Math.round(Audio.fmt.getSampleRate() * 0.05f), Math.round(Audio.fmt.getSampleRate() / 4), Audio.bufsize()) {
-			   protected void added() {
-			   dpy();
-			   }
-			   void dpy() {
-			   dpy.settext(Math.round((this.val * 1000) / Audio.fmt.getSampleRate()) + " ms");
-			   }
-			   public void changed() {
-			   Audio.bufsize(val, true);
-			   dpy();
-			   }
-		   	}, dpy);
-			leftColumn.tooltip = audioLatencyTooltip;
+                leftColumn = new HSlider(UI.scale(420), Math.round(Audio.SAMPLE_RATE * 0.05f), Math.round(Audio.SAMPLE_RATE / 4), sys.bufsize()) {
+			       protected void added() {
+				   dpy();
+			       }
+			       void dpy() {
+				   dpy.settext(Math.round((this.val * 1000) / Audio.SAMPLE_RATE) + " ms");
+			       }
+			       public void changed() {
+				   sys.bufsize(val);
+				   dpy();
+			       }
+			   }, dpy);
+            leftColumn.tooltip = audioLatencyTooltip;
 	    }
 
 		leftColumn = add(new Label("Other Sound Settings"), leftColumn.pos("bl").adds(177, 20));
 
-		leftColumn = add(new Label("Boiling Cauldron Volume (Requires Reload)"), leftColumn.pos("bl").adds(0, 5).x(0));
+		leftColumn = add(new Label("Boiling Cauldron Volume"), leftColumn.pos("bl").adds(0, 5).x(0));
 		leftColumn = add(cauldronSoundVolumeSlider = new HSlider(UI.scale(audioSliderWidth), 0, 100, Utils.getprefi("cauldronSoundVolume", 25)) {
 			protected void attach(UI ui) {
 				super.attach(ui);
 			}
 			public void changed() {
 				Utils.setprefi("cauldronSoundVolume", val);
+
 			}
 		}, leftColumn.pos("bl").adds(0, 2));
 
@@ -588,7 +632,46 @@ public class OptWnd extends Window {
 			}
 		}, leftColumn.pos("bl").adds(0, 2));
 
-		rightColumn = add(new Label("Music Instruments Volume"), rightColumn.pos("bl").adds(0, 119));
+        leftColumn = add(new Label("Swoosh Sound Effect Volume"), leftColumn.pos("bl").adds(0, 5).x(0));
+        leftColumn = add(swooshSoundVolumeSlider = new HSlider(UI.scale(audioSliderWidth), 0, 100, Utils.getprefi("swooshSoundVolume", 75)) {
+            protected void attach(UI ui) {
+                super.attach(ui);
+            }
+            public void changed() {
+                Utils.setprefi("swooshSoundVolume", val);
+            }
+        }, leftColumn.pos("bl").adds(0, 2));
+        leftColumn = add(new Label("Grammophone Hat Sound Volume"), leftColumn.pos("bl").adds(0, 5).x(0));
+        leftColumn = add(grammophoneHatSoundVolumeSlider = new HSlider(UI.scale(audioSliderWidth), 0, 100, Utils.getprefi("grammophoneHatSoundVolume", 100)) {
+            protected void attach(UI ui) {
+                super.attach(ui);
+            }
+            public void changed() {
+                Utils.setprefi("grammophoneHatSoundVolume", val);
+            }
+        }, leftColumn.pos("bl").adds(0, 2));
+
+        leftColumn = add(new Label("Creak Sound Volume"), leftColumn.pos("bl").adds(0, 5).x(0));
+        leftColumn = add(creakSoundVolumeSlider = new HSlider(UI.scale(audioSliderWidth), 0, 100, Utils.getprefi("creakSoundVolume", 40)) {
+            protected void attach(UI ui) {
+                super.attach(ui);
+            }
+            public void changed() {
+                Utils.setprefi("creakSoundVolume", val);
+            }
+        }, leftColumn.pos("bl").adds(0, 2));
+
+        leftColumn = add(new Label("Water Splash Sound Volume"), leftColumn.pos("bl").adds(0, 5).x(0));
+        leftColumn = add(waterSplashSoundVolumeSlider = new HSlider(UI.scale(audioSliderWidth), 0, 100, Utils.getprefi("waterSplashSoundVolume", 30)) {
+            protected void attach(UI ui) {
+                super.attach(ui);
+            }
+            public void changed() {
+                Utils.setprefi("waterSplashSoundVolume", val);
+            }
+        }, leftColumn.pos("bl").adds(0, 2));
+
+		rightColumn = add(new Label("Music Instruments Volume"), rightColumn.pos("bl").adds(0, 83));
 		rightColumn = add(instrumentsSoundVolumeSlider = new HSlider(UI.scale(audioSliderWidth), 0, 100, Utils.getprefi("instrumentsSoundVolume", 70)) {
 			protected void attach(UI ui) {
 				super.attach(ui);
@@ -618,12 +701,53 @@ public class OptWnd extends Window {
 			}
 		}, rightColumn.pos("bl").adds(0, 2));
 
-	    add(new PButton(UI.scale(200), "Back", 27, back, "Options            "), leftColumn.pos("bl").adds(0, 30));
-	    pack();
+        rightColumn = add(new Label("Chipping Sound Effect Volume"), rightColumn.pos("bl").adds(0, 5));
+        rightColumn = add(chippingSoundVolumeSlider = new HSlider(UI.scale(audioSliderWidth), 0, 100, Utils.getprefi("chippingSoundVolume", 75)) {
+            protected void attach(UI ui) {
+                super.attach(ui);
+            }
+            public void changed() {
+                Utils.setprefi("chippingSoundVolume", val);
+            }
+        }, rightColumn.pos("bl").adds(0, 2));
+
+        rightColumn = add(new Label("Mining Sound Volume"), rightColumn.pos("bl").adds(0, 5));
+        rightColumn = add(miningSoundVolumeSlider = new HSlider(UI.scale(audioSliderWidth), 0, 100, Utils.getprefi("miningSoundVolume", 75)) {
+            protected void attach(UI ui) {
+                super.attach(ui);
+            }
+            public void changed() {
+                Utils.setprefi("miningSoundVolume", val);
+            }
+        }, rightColumn.pos("bl").adds(0, 2));
+
+        rightColumn = add(new Label("Doom Bell Cap Sound Volume"), rightColumn.pos("bl").adds(0, 5));
+        rightColumn = add(doomBellCapSoundVolumeSlider = new HSlider(UI.scale(audioSliderWidth), 0, 100, Utils.getprefi("doomBellCapSoundVolume", 75)) {
+            protected void attach(UI ui) {
+                super.attach(ui);
+            }
+            public void changed() {
+                Utils.setprefi("doomBellCapSoundVolume", val);
+            }
+        }, rightColumn.pos("bl").adds(0, 2));
+        rightColumn = add(new Label("Knarr Sound Volume"), rightColumn.pos("bl").adds(0, 5));
+        rightColumn = add(knarrSoundVolumeSlider = new HSlider(UI.scale(audioSliderWidth), 0, 100, Utils.getprefi("knarrSoundVolume", 30)) {
+            protected void attach(UI ui) {
+                super.attach(ui);
+            }
+            public void changed() {
+                Utils.setprefi("knarrSoundVolume", val);
+            }
+        }, rightColumn.pos("bl").adds(0, 2));
+
+        Widget backButton;
+        add(backButton = new PButton(UI.scale(200), "Back", 27, back, "Options            "), leftColumn.pos("bl").adds(0, 30).x(0));
+        pack();
+        centerBackButton(backButton, this);
 	}
     }
 
-	public static CheckBox simplifiedUIThemeCheckBox;
+	public static OldDropBox uiThemeDropBox;
 	public static CheckBox extendedMouseoverInfoCheckBox;
 	public static CheckBox disableMenuGridHotkeysCheckBox;
 	public static CheckBox alwaysOpenBeltOnLoginCheckBox;
@@ -646,6 +770,12 @@ public class OptWnd extends Window {
 	public static HSlider mapZoomSpeedSlider;
 	public static CheckBox alwaysOpenMiniStudyOnLoginCheckBox;
 	public static HSlider mapIconsSizeSlider;
+	public static CheckBox simplifiedMapColorsCheckBox;
+	public static ColorOptionWidget sprintLandsColorWidget;
+	public static ColorOptionWidget thirdSpeedLandsColorWidget;
+	public static ColorOptionWidget swampsColorWidget;
+	public static ColorOptionWidget thicketColorWidget;
+	public static CheckBox removeMapTileBordersCheckBox;
 	public static CheckBox improvedInstrumentMusicWindowCheckBox;
     public static CheckBox preventEscKeyFromClosingWindowsCheckBox;
     public static CheckBox stackWindowsWhenOpenedCheckBox;
@@ -660,7 +790,7 @@ public class OptWnd extends Window {
 		final double smin = 1, smax = Math.floor(UI.maxscale() / gran) * gran;
 		final int steps = (int)Math.round((smax - smin) / gran);
 		addhlp(leftColumn.pos("bl").adds(0, 4), UI.scale(5),
-		       leftColumn = new HSlider(UI.scale(160), 0, steps, (int)Math.round(steps * (Utils.getprefd("uiscale", 1.0) - smin) / (smax - smin))) {
+		       leftColumn = new HSlider(UI.scale(160), 0, steps, (int)Math.round(steps * (UI.scale(1.0) - smin) / (smax - smin))) {
 			       protected void added() {
 				   dpy();
 			       }
@@ -679,7 +809,7 @@ public class OptWnd extends Window {
 		leftColumn = add(showFramerateCheckBox = new CheckBox("Show Framerate"){
 			{a = (Utils.getprefb("showFramerate", true));}
 			public void changed(boolean val) {
-				GLPanel.Loop.showFramerate = val;
+				UILoop.showFramerate = val;
 				Utils.setprefb("showFramerate", val);
 			}
 		}, leftColumn.pos("bl").adds(0, 18));
@@ -801,13 +931,13 @@ public class OptWnd extends Window {
 				a = val;
 				if (val) {
 					try {
-						File file = new File(haven.MainFrame.gameDir + "res/customclient/sfx/CurioFinished.wav");
+						File file = new File(haven.Client.gameDir + "res/customclient/sfx/CurioFinished.wav");
 						if (file.exists()) {
 							AudioInputStream in = AudioSystem.getAudioInputStream(file);
 							AudioFormat tgtFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, 44100, 16, 2, 4, 44100, false);
 							AudioInputStream pcmStream = AudioSystem.getAudioInputStream(tgtFormat, in);
 							Audio.CS klippi = new Audio.PCMClip(pcmStream, 2, 2);
-							((Audio.Mixer) Audio.player.stream).add(new Audio.VolAdjust(klippi, 0.8));
+                            ui.globalSfxPlay(new Audio.VolAdjust(klippi, 0.8));
 						}
 					} catch (Exception e) {
 					}
@@ -850,27 +980,38 @@ public class OptWnd extends Window {
 		transparentQuestsObjectivesWindowCheckBox.tooltip = transparentQuestsObjectivesWindowTooltip;
 
 		Widget rightColumn;
-		rightColumn = add(simplifiedUIThemeCheckBox = new CheckBox("Simplified UI Theme"){
-			{a = (Utils.getprefb("simplifiedUITheme", false));}
-			public void changed(boolean val) {
-				Utils.setprefb("simplifiedUITheme", val);
-				Window.bg = (!val ? Resource.loadtex("gfx/hud/wnd/lg/bg") : Resource.loadtex("customclient/simplifiedUI/wnd/bg"));
-				Window.cl =  (!val ? Resource.loadtex("gfx/hud/wnd/lg/cl") : Resource.loadtex("customclient/simplifiedUI/wnd/cl"));
-				Window.br = (!val ? Resource.loadtex("gfx/hud/wnd/lg/br") : Resource.loadtex("customclient/simplifiedUI/wnd/br"));
-				Button.bl = (!val ? Resource.loadsimg("gfx/hud/buttons/tbtn/left") : Resource.loadsimg("customclient/simplifiedUI/buttons/tbtn/left"));
-				Button.br = (!val ? Resource.loadsimg("gfx/hud/buttons/tbtn/right") : Resource.loadsimg("customclient/simplifiedUI/buttons/tbtn/right"));
-				Button.bt = (!val ? Resource.loadsimg("gfx/hud/buttons/tbtn/top") : Resource.loadsimg("customclient/simplifiedUI/buttons/tbtn/top"));
-				Button.bb = (!val ? Resource.loadsimg("gfx/hud/buttons/tbtn/bottom") : Resource.loadsimg("customclient/simplifiedUI/buttons/tbtn/bottom"));
-				Button.dt = (!val ? Resource.loadsimg("gfx/hud/buttons/tbtn/dtex") : Resource.loadsimg("customclient/simplifiedUI/buttons/tbtn/dtex"));
-				Button.ut = (!val ? Resource.loadsimg("gfx/hud/buttons/tbtn/utex") : Resource.loadsimg("customclient/simplifiedUI/buttons/tbtn/utex"));
-				Button.bm = (!val ? Resource.loadsimg("gfx/hud/buttons/tbtn/mid") : Resource.loadsimg("customclient/simplifiedUI/buttons/tbtn/mid"));
-				if (simpleUIFuture != null)
-					simpleUIFuture.cancel(true);
-				simpleUIChanged = true;
-				simpleUIFuture = simpleUIExecutor.scheduleWithFixedDelay(OptWnd.this::resetSimpleUIChanged, 2, 3, TimeUnit.SECONDS);
-			}
-		}, UI.scale(230, 2));
-		simplifiedUIThemeCheckBox.tooltip = simplifiedUIThemeCheckBoxTooltip;
+        rightColumn = add(new Label("UI Theme (Req. Restart):"), UI.scale(230, 2));
+        List<String> uiThemes = Arrays.asList("Nightdawg Dark", "Trollex Red", "Trollex Blue", "Custom Theme");
+        Widget uiThemesWdg = add(new OldDropBox<String>(uiThemes.size(), uiThemes) {
+            {
+                super.change(uiThemes.get(Utils.getprefi("uiThemeDropBox", 0)));
+            }
+            @Override
+            protected String listitem(int i) {
+                return uiThemes.get(i);
+            }
+            @Override
+            protected int listitems() {
+                return uiThemes.size();
+            }
+            @Override
+            protected void drawitem(GOut g, String item, int i) {
+                g.aimage(Text.renderstroked(item).tex(), Coord.of(UI.scale(3), g.sz().y / 2), 0.0, 0.5);
+            }
+            @Override
+            public void change(String item) {
+                super.change(item);
+                for (int i = 0; i < uiThemes.size(); i++){
+                    if (item.equals(uiThemes.get(i))){
+                        Utils.setprefi("uiThemeDropBox", i);
+                        Utils.setpref("uiThemeName", uiThemes.get(i));
+                    }
+                }
+            }
+        }, rightColumn.pos("ur").adds(2, 0));
+        uiThemesWdg.tooltip = uiThemeTooltip;
+        rightColumn.tooltip = uiThemeTooltip;
+
 		rightColumn = add(extendedMouseoverInfoCheckBox = new CheckBox("Extended Mouseover Info (Dev)"){
 			{a = (Utils.getprefb("extendedMouseoverInfo", false));}
 			public void changed(boolean val) {
@@ -935,7 +1076,7 @@ public class OptWnd extends Window {
 		expWindowLocationLabel.tooltip = experienceWindowLocationTooltip;
 
 		rightColumn = add(new Label("Map Window Zoom Speed:"), rightColumn.pos("bl").adds(0, 10).x(UI.scale(230)));
-		rightColumn = add(mapZoomSpeedSlider = new HSlider(UI.scale(110), 10, 30, Utils.getprefi("mapZoomSpeed", 15)) {
+		rightColumn = add(mapZoomSpeedSlider = new HSlider(UI.scale(110), 10, 50, Utils.getprefi("mapZoomSpeed", 15)) {
 			public void changed() {
 				Utils.setprefi("mapZoomSpeed", val);
 			}
@@ -1177,6 +1318,7 @@ public class OptWnd extends Window {
 	public static CheckBox drawFloatingCombatDataOnOthersCheckBox;
 	public static CheckBox showCombatManeuverCombatInfoCheckBox;
 	public static CheckBox onlyShowOpeningsAbovePercentageCombatInfoCheckBox;
+    public static CheckBox includeCurrentTargetShowOpeningsAbovePercentageCombatInfoCheckBox;
 	public static CheckBox onlyShowCoinsAbove4CombatInfoCheckBox;
 	public static CheckBox drawFloatingCombatOpeningsAboveYourselfCheckBox;
 	public static TextEntry minimumOpeningTextEntry;
@@ -1205,7 +1347,15 @@ public class OptWnd extends Window {
 	public static HSlider targetSpriteSizeSlider;
 	public static CheckBox drawChaseVectorsCheckBox;
 	public static CheckBox drawYourCurrentPathCheckBox;
-	public static CheckBox showYourCombatRangeCirclesCheckBox;
+
+    public static ColorOptionWidget yourselfVectorColorOptionWidget;
+    public static String[] yourselfVectorColorSetting = Utils.getprefsa("yourselfVector" + "_colorSetting", new String[]{"255", "255", "255", "255"});
+    public static ColorOptionWidget friendVectorColorOptionWidget;
+    public static String[] friendVectorColorSetting = Utils.getprefsa("friendVector" + "_colorSetting", new String[]{"47", "191", "7", "255"});
+    public static ColorOptionWidget enemyVectorColorOptionWidget;
+    public static String[] enemyVectorColorSetting = Utils.getprefsa("enemyVector" + "_colorSetting", new String[]{"255", "0", "0", "255"});
+
+    public static CheckBox showYourCombatRangeCirclesCheckBox;
 	public static boolean refreshMyUnarmedRange = false;
 	public static boolean refreshMyWeaponRange = false;
 	public static ColorOptionWidget unarmedCombatRangeColorOptionWidget;
@@ -1350,6 +1500,12 @@ public class OptWnd extends Window {
 					super.changed();
 				}
 			}, leftColumn.pos("ur").adds(10, 0));
+            leftColumn = add(includeCurrentTargetShowOpeningsAbovePercentageCombatInfoCheckBox = new CheckBox("Include Current Target"){
+                {a = Utils.getprefb("includeCurrentTargetShowOpeningsAbovePercentage", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("includeCurrentTargetShowOpeningsAbovePercentage", val);
+                }
+            }, leftColumn.pos("bl").adds(20, 4));
 			add(new Label(" >"), leftColumn.pos("bl").adds(0, 2).xs(0));
 
 			leftColumn = add(onlyShowCoinsAbove4CombatInfoCheckBox = new CheckBox("Only show coins when higher than 4"){
@@ -1357,7 +1513,7 @@ public class OptWnd extends Window {
 				public void changed(boolean val) {
 					Utils.setprefb("onlyShowCoinsAbove4", val);
 				}
-			}, leftColumn.pos("bl").adds(0, 2));
+			}, leftColumn.pos("bl").adds(0, 2).xs(20));
 
 			leftColumn = add(toggleGobDamageInfoCheckBox = new CheckBox("Display Damage Info:"){
 				{a = Utils.getprefb("GobDamageInfoToggled", true);}
@@ -1400,6 +1556,30 @@ public class OptWnd extends Window {
 					Utils.setprefb("(partyMembersDamageInfo", val);
 				}
 			}, leftColumn.pos("ur").adds(6, 0));
+
+            leftColumn = add(showYourCombatRangeCirclesCheckBox = new CheckBox("Show Your Combat Range Circles"){
+                {a = Utils.getprefb("showYourCombatRangeCircles", false);}
+                public void changed(boolean val) {
+                    Utils.setprefb("showYourCombatRangeCircles", val);
+                }
+            }, leftColumn.pos("bl").adds(0, 12).x(0));
+            showYourCombatRangeCirclesCheckBox.tooltip = showYourCombatRangeCirclesTooltip;
+            leftColumn = add(new Label("Unarmed"), leftColumn.pos("bl").adds(16, 1));
+            add(unarmedCombatRangeColorOptionWidget = new ColorOptionWidget("", "unarmedCombatRange", 0, Integer.parseInt(unarmedCombatRangeColorSetting[0]), Integer.parseInt(unarmedCombatRangeColorSetting[1]), Integer.parseInt(unarmedCombatRangeColorSetting[2]), Integer.parseInt(unarmedCombatRangeColorSetting[3]), (Color col) -> {
+                refreshMyUnarmedRange = true;
+            }){}, leftColumn.pos("bl").adds(12, 0));
+            leftColumn = add(new Label("Weapon"), leftColumn.pos("ur").adds(20, 0));
+            leftColumn = add(weaponCombatRangeColorOptionWidget = new ColorOptionWidget("", "weaponCombatRange", 0, Integer.parseInt(weaponCombatRangeColorSetting[0]), Integer.parseInt(weaponCombatRangeColorSetting[1]), Integer.parseInt(weaponCombatRangeColorSetting[2]), Integer.parseInt(weaponCombatRangeColorSetting[3]), (Color col) -> {
+                refreshMyWeaponRange = true;
+            }){}, leftColumn.pos("bl").adds(10, 0));
+            leftColumn = add(new Button(UI.scale(70), "Reset All", false).action(() -> {
+                Utils.setprefsa("unarmedCombatRange" + "_colorSetting", new String[]{"0", "160", "0", "255"});
+                Utils.setprefsa("weaponCombatRange" + "_colorSetting", new String[]{"130", "0", "172", "255"});
+                unarmedCombatRangeColorOptionWidget.cb.colorChooser.setColor(unarmedCombatRangeColorOptionWidget.currentColor = new Color(0, 160, 0, 255));
+                weaponCombatRangeColorOptionWidget.cb.colorChooser.setColor(weaponCombatRangeColorOptionWidget.currentColor = new Color(130, 0, 172, 255));
+                refreshMyUnarmedRange = true;
+                refreshMyWeaponRange = true;
+            }), leftColumn.pos("ur").adds(46, -2));
 
 			rightColumn = add(showCombatOpeningsAsLettersCheckBox = new CheckBox("Show Combat Openings as Colored Letters"){
 				{a = Utils.getprefb("showCombatOpeningsAsLetters", false);}
@@ -1470,8 +1650,9 @@ public class OptWnd extends Window {
 				{a = Utils.getprefb("highlightPartyMembers", false);}
 				public void changed(boolean val) {
 					Utils.setprefb("highlightPartyMembers", val);
-					if (ui != null && ui.gui != null && ui.gui.map != null && ui.gui.map.partyHighlight != null)
-						ui.gui.map.partyHighlight.update();
+                    if (ui != null && ui.gui != null) {
+                        ui.sess.glob.oc.gobAction(Gob::updatePartyHighlightOverlay);
+                    }
 				}
 			}, rightColumn.pos("bl").adds(0, 16).xs(320));
 			highlightPartyMembersCheckBox.tooltip = highlightPartyMembersTooltip;
@@ -1479,41 +1660,66 @@ public class OptWnd extends Window {
 				{a = Utils.getprefb("showCirclesUnderPartyMembers", true);}
 				public void changed(boolean val) {
 					Utils.setprefb("showCirclesUnderPartyMembers", val);
-					if (ui != null && ui.gui != null && ui.gui.map != null && ui.gui.map.partyCircles != null)
-						ui.gui.map.partyCircles.update();
+                    if (ui != null && ui.gui != null) {
+                        ui.sess.glob.oc.gobAction(Gob::updatePartyCircleOverlay);
+                    }
 				}
 			}, rightColumn.pos("bl").adds(0, 2));
 			showCirclesUnderPartyMembersCheckBox.tooltip = showCirclesUnderPartyMembersTooltip;
 
 			rightColumn = add(yourselfPartyColorOptionWidget = new ColorOptionWidget("Yourself (Party Color):", "yourselfParty", 120, Integer.parseInt(yourselfPartyColorSetting[0]), Integer.parseInt(yourselfPartyColorSetting[1]), Integer.parseInt(yourselfPartyColorSetting[2]), Integer.parseInt(yourselfPartyColorSetting[3]), (Color col) -> {
-				PartyHighlight.YOURSELF_OL_COLOR = col;
-				PartyCircles.YOURSELF_OL_COLOR = col;
+                GobPartyHighlight.YOURSELF_OL_COLOR = new MixColor(col);
+                PartyCircleSprite.YOURSELF_OL_COLOR = col;
+                if (ui != null && ui.gui != null) {
+                    ui.sess.glob.oc.gobAction(Gob::updatePartyCircleOverlay);
+                    ui.sess.glob.oc.gobAction(Gob::updatePartyHighlightOverlay);
+                }
 			}){}, rightColumn.pos("bl").adds(6, 2));
 			add(new Button(UI.scale(70), "Reset", false).action(() -> {
 				Utils.setprefsa("yourselfParty" + "_colorSetting", new String[]{"255", "255", "255", "128"});
 				yourselfPartyColorOptionWidget.cb.colorChooser.setColor(yourselfPartyColorOptionWidget.currentColor = new Color(255, 255, 255, 128));
-				PartyHighlight.YOURSELF_OL_COLOR = yourselfPartyColorOptionWidget.currentColor;
-				PartyCircles.YOURSELF_OL_COLOR = yourselfPartyColorOptionWidget.currentColor;
+                GobPartyHighlight.YOURSELF_OL_COLOR = new MixColor(yourselfPartyColorOptionWidget.currentColor);
+                PartyCircleSprite.YOURSELF_OL_COLOR = yourselfPartyColorOptionWidget.currentColor;
+                if (ui != null && ui.gui != null) {
+                    ui.sess.glob.oc.gobAction(Gob::updatePartyCircleOverlay);
+                    ui.sess.glob.oc.gobAction(Gob::updatePartyHighlightOverlay);
+                }
 			}), yourselfPartyColorOptionWidget.pos("ur").adds(16, 0)).tooltip = resetButtonTooltip;
 			rightColumn = add(leaderPartyColorOptionWidget = new ColorOptionWidget("Leader (Party Color):", "leaderParty", 120, Integer.parseInt(leaderPartyColorSetting[0]), Integer.parseInt(leaderPartyColorSetting[1]), Integer.parseInt(leaderPartyColorSetting[2]), Integer.parseInt(leaderPartyColorSetting[3]), (Color col) -> {
-				PartyHighlight.LEADER_OL_COLOR = col;
-				PartyCircles.LEADER_OL_COLOR = col;
+                GobPartyHighlight.LEADER_OL_COLOR = new MixColor(col);
+                PartyCircleSprite.LEADER_OL_COLOR = col;
+                if (ui != null && ui.gui != null) {
+                    ui.sess.glob.oc.gobAction(Gob::updatePartyCircleOverlay);
+                    ui.sess.glob.oc.gobAction(Gob::updatePartyHighlightOverlay);
+                }
 			}){}, rightColumn.pos("bl").adds(0, 4));
 			add(new Button(UI.scale(70), "Reset", false).action(() -> {
 				Utils.setprefsa("leaderParty" + "_colorSetting", new String[]{"0", "74", "208", "164"});
 				leaderPartyColorOptionWidget.cb.colorChooser.setColor(leaderPartyColorOptionWidget.currentColor = new Color(0, 74, 208, 164));
-				PartyHighlight.LEADER_OL_COLOR = leaderPartyColorOptionWidget.currentColor;
-				PartyCircles.LEADER_OL_COLOR = leaderPartyColorOptionWidget.currentColor;
+                GobPartyHighlight.LEADER_OL_COLOR = new MixColor(leaderPartyColorOptionWidget.currentColor);
+                PartyCircleSprite.LEADER_OL_COLOR = leaderPartyColorOptionWidget.currentColor;
+                if (ui != null && ui.gui != null) {
+                    ui.sess.glob.oc.gobAction(Gob::updatePartyCircleOverlay);
+                    ui.sess.glob.oc.gobAction(Gob::updatePartyHighlightOverlay);
+                }
 			}), leaderPartyColorOptionWidget.pos("ur").adds(16, 0)).tooltip = resetButtonTooltip;
 			rightColumn = add(memberPartyColorOptionWidget = new ColorOptionWidget("Member (Party Color):", "memberParty", 120, Integer.parseInt(memberPartyColorSetting[0]), Integer.parseInt(memberPartyColorSetting[1]), Integer.parseInt(memberPartyColorSetting[2]), Integer.parseInt(memberPartyColorSetting[3]), (Color col) -> {
-				PartyHighlight.MEMBER_OL_COLOR = col;
-				PartyCircles.MEMBER_OL_COLOR = col;
+                GobPartyHighlight.MEMBER_OL_COLOR = new MixColor(col);
+                PartyCircleSprite.MEMBER_OL_COLOR = col;
+                if (ui != null && ui.gui != null) {
+                    ui.sess.glob.oc.gobAction(Gob::updatePartyCircleOverlay);
+                    ui.sess.glob.oc.gobAction(Gob::updatePartyHighlightOverlay);
+                }
 			}){}, rightColumn.pos("bl").adds(0, 4));
 			add(new Button(UI.scale(70), "Reset", false).action(() -> {
 				Utils.setprefsa("memberParty" + "_colorSetting", new String[]{"0", "160", "0", "164"});
 				memberPartyColorOptionWidget.cb.colorChooser.setColor(memberPartyColorOptionWidget.currentColor = new Color(0, 160, 0, 164));
-				PartyHighlight.MEMBER_OL_COLOR = memberPartyColorOptionWidget.currentColor;
-				PartyCircles.MEMBER_OL_COLOR = memberPartyColorOptionWidget.currentColor;
+                GobPartyHighlight.MEMBER_OL_COLOR = new MixColor(memberPartyColorOptionWidget.currentColor);
+                PartyCircleSprite.MEMBER_OL_COLOR = memberPartyColorOptionWidget.currentColor;
+                if (ui != null && ui.gui != null) {
+                    ui.sess.glob.oc.gobAction(Gob::updatePartyCircleOverlay);
+                    ui.sess.glob.oc.gobAction(Gob::updatePartyHighlightOverlay);
+                }
 			}), memberPartyColorOptionWidget.pos("ur").adds(16, 0)).tooltip = resetButtonTooltip;
 
 			rightColumn = add(highlightCombatFoesCheckBox = new CheckBox("Highlight Combat Foes"){
@@ -1579,30 +1785,33 @@ public class OptWnd extends Window {
 				}
 			}, rightColumn.pos("bl").adds(0, 2));
 			drawYourCurrentPathCheckBox.tooltip = drawYourCurrentPathTooltip;
-			rightColumn = add(showYourCombatRangeCirclesCheckBox = new CheckBox("Show Your Combat Range Circles"){
-				{a = Utils.getprefb("showYourCombatRangeCircles", false);}
-				public void changed(boolean val) {
-					Utils.setprefb("showYourCombatRangeCircles", val);
-				}
-			}, rightColumn.pos("bl").adds(0, 2));
-			showYourCombatRangeCirclesCheckBox.tooltip = showYourCombatRangeCirclesTooltip;
-			rightColumn = add(new Label("Unarmed"), rightColumn.pos("bl").adds(16, 1));
-			add(unarmedCombatRangeColorOptionWidget = new ColorOptionWidget("", "unarmedCombatRange", 0, Integer.parseInt(unarmedCombatRangeColorSetting[0]), Integer.parseInt(unarmedCombatRangeColorSetting[1]), Integer.parseInt(unarmedCombatRangeColorSetting[2]), Integer.parseInt(unarmedCombatRangeColorSetting[3]), (Color col) -> {
-				refreshMyUnarmedRange = true;
-			}){}, rightColumn.pos("bl").adds(12, 0));
-			rightColumn = add(new Label("Weapon"), rightColumn.pos("ur").adds(20, 0));
-			rightColumn = add(weaponCombatRangeColorOptionWidget = new ColorOptionWidget("", "weaponCombatRange", 0, Integer.parseInt(weaponCombatRangeColorSetting[0]), Integer.parseInt(weaponCombatRangeColorSetting[1]), Integer.parseInt(weaponCombatRangeColorSetting[2]), Integer.parseInt(weaponCombatRangeColorSetting[3]), (Color col) -> {
-				refreshMyWeaponRange = true;
-			}){}, rightColumn.pos("bl").adds(10, 0));
-			rightColumn = add(new Button(UI.scale(70), "Reset All", false).action(() -> {
-				Utils.setprefsa("unarmedCombatRange" + "_colorSetting", new String[]{"0", "160", "0", "255"});
-				Utils.setprefsa("weaponCombatRange" + "_colorSetting", new String[]{"130", "0", "172", "255"});
-				unarmedCombatRangeColorOptionWidget.cb.colorChooser.setColor(unarmedCombatRangeColorOptionWidget.currentColor = new Color(0, 160, 0, 255));
-				weaponCombatRangeColorOptionWidget.cb.colorChooser.setColor(weaponCombatRangeColorOptionWidget.currentColor = new Color(130, 0, 172, 255));
-				refreshMyUnarmedRange = true;
-				refreshMyWeaponRange = true;
-			}), rightColumn.pos("ur").adds(46, -2));
-			
+            rightColumn = add(yourselfVectorColorOptionWidget = new ColorOptionWidget("Yourself (Vector Color):", "yourselfVector", 120, Integer.parseInt(yourselfVectorColorSetting[0]), Integer.parseInt(yourselfVectorColorSetting[1]), Integer.parseInt(yourselfVectorColorSetting[2]), Integer.parseInt(yourselfVectorColorSetting[3]), (Color col) -> {
+                ChaseVectorSprite.YOURCOLOR = col;
+            }){}, rightColumn.pos("bl").adds(6, 2));
+            add(new Button(UI.scale(70), "Reset", false).action(() -> {
+                Utils.setprefsa("yourselfVector" + "_colorSetting", new String[]{"255", "255", "255", "255"});
+                yourselfVectorColorOptionWidget.cb.colorChooser.setColor(yourselfVectorColorOptionWidget.currentColor = new Color(255, 255, 255, 255));
+                ChaseVectorSprite.YOURCOLOR = yourselfVectorColorOptionWidget.currentColor;
+            }), yourselfVectorColorOptionWidget.pos("ur").adds(16, 0)).tooltip = resetButtonTooltip;
+            rightColumn = add(friendVectorColorOptionWidget = new ColorOptionWidget("Friend (Vector Color):", "friendVector", 120, Integer.parseInt(friendVectorColorSetting[0]), Integer.parseInt(friendVectorColorSetting[1]), Integer.parseInt(friendVectorColorSetting[2]), Integer.parseInt(friendVectorColorSetting[3]), (Color col) -> {
+                ChaseVectorSprite.FRIENDCOLOR = col;
+            }){}, rightColumn.pos("bl").adds(0, 4));
+            add(new Button(UI.scale(70), "Reset", false).action(() -> {
+                Utils.setprefsa("friendVector" + "_colorSetting", new String[]{"47", "191", "7", "255"});
+                friendVectorColorOptionWidget.cb.colorChooser.setColor(friendVectorColorOptionWidget.currentColor = new Color(47, 191, 7, 255));
+                ChaseVectorSprite.FRIENDCOLOR = friendVectorColorOptionWidget.currentColor;
+            }), friendVectorColorOptionWidget.pos("ur").adds(16, 0)).tooltip = resetButtonTooltip;
+
+            rightColumn = add(enemyVectorColorOptionWidget = new ColorOptionWidget("Enemy (Vector Color):", "enemyVector", 120, Integer.parseInt(enemyVectorColorSetting[0]), Integer.parseInt(enemyVectorColorSetting[1]), Integer.parseInt(enemyVectorColorSetting[2]), Integer.parseInt(enemyVectorColorSetting[3]), (Color col) -> {
+                ChaseVectorSprite.ENEMYCOLOR = col;
+            }){}, rightColumn.pos("bl").adds(0, 4));
+            add(new Button(UI.scale(70), "Reset", false).action(() -> {
+                Utils.setprefsa("enemyVector" + "_colorSetting", new String[]{"255", "0", "0", "255"});
+                enemyVectorColorOptionWidget.cb.colorChooser.setColor(enemyVectorColorOptionWidget.currentColor = new Color(255, 0, 0, 255));
+                ChaseVectorSprite.ENEMYCOLOR = enemyVectorColorOptionWidget.currentColor;
+            }), enemyVectorColorOptionWidget.pos("ur").adds(16, 0)).tooltip = resetButtonTooltip;
+
+
 
 			Widget backButton;
 			add(backButton = new PButton(UI.scale(200), "Back", 27, back, "Advanced Settings"), leftColumn.pos("bl").adds(0, 33).x(0));
@@ -1810,6 +2019,7 @@ public class OptWnd extends Window {
 	public static ColorOptionWidget collisionBoxColorOptionWidget;
 	public static String[] collisionBoxColorSetting = Utils.getprefsa("collisionBox" + "_colorSetting", new String[]{"255", "255", "255", "210"});
 	public static CheckBox displayObjectDurabilityPercentageCheckBox;
+    public static CheckBox showDurabilityCrackTextureCheckBox;
 	public static CheckBox displayObjectQualityOnInspectionCheckBox;
 	public static CheckBox displayGrowthInfoCheckBox;
 	public static CheckBox alsoShowOversizedTreesAbovePercentageCheckBox;
@@ -1819,6 +2029,8 @@ public class OptWnd extends Window {
 	public static String[] rabbitAuraColorSetting = Utils.getprefsa("rabbitAura" + "_colorSetting", new String[]{"88", "255", "0", "140"});
 	public static ColorOptionWidget genericCritterAuraColorOptionWidget;
 	public static String[] genericCritterAuraColorSetting = Utils.getprefsa("genericCritterAura" + "_colorSetting", new String[]{"193", "0", "255", "140"});
+    public static ColorOptionWidget dangerousCritterAuraColorOptionWidget;
+    public static String[] dangerousCritterAuraColorSetting = Utils.getprefsa("dangerousCritterAura" + "_colorSetting", new String[]{"193", "0", "0", "140"});
 	public static CheckBox showSpeedBuffAurasCheckBox;
 	public static ColorOptionWidget speedBuffAuraColorOptionWidget;
 	public static String[] speedBuffAuraColorSetting = Utils.getprefsa("speedBuffAura" + "_colorSetting", new String[]{"255", "255", "255", "140"});
@@ -1829,6 +2041,7 @@ public class OptWnd extends Window {
 	public static CheckBox showMoundBedsRadiiCheckBox;
 	public static CheckBox showBarrelContentsTextCheckBox;
 	public static CheckBox showIconSignTextCheckBox;
+    public static CheckBox showProduceSackTextCheckBox;
 	public static CheckBox showCheeseRacksTierTextCheckBox;
 	public static CheckBox highlightCliffsCheckBox;
 	public static ColorOptionWidget highlightCliffsColorOptionWidget;
@@ -1856,13 +2069,13 @@ public class OptWnd extends Window {
 	public static CheckBox showWorkstationProgressUnpreparedCheckBox;
 	public static ColorOptionWidget showWorkstationProgressUnpreparedColorOptionWidget;
 	public static String[] workstationProgressUnpreparedColorSetting = Utils.getprefsa("workstationProgressUnprepared" + "_colorSetting", new String[]{"20", "20", "20", "180"});
-	public static CheckBox showMineSupportRadiiCheckBox;
-	public static CheckBox showMineSupportSafeTilesCheckBox;
+    public static CheckBox showMineSupportCoverageCheckBox;
+    public static ColorOptionWidget safeTilesColorOptionWidget;
+    public static String[] coveredTilesColorSetting = Utils.getprefsa("coveredTiles" + "_colorSetting", new String[]{"0", "105", "210", "60"});
 	public static CheckBox enableMineSweeperCheckBox;
 	public static OldDropBox<Integer> sweeperDurationDropbox;
 	public static final List<Integer> sweeperDurations = Arrays.asList(5, 10, 15, 30, 45, 60, 120);
 	public static int sweeperSetDuration = Utils.getprefi("sweeperSetDuration", 1);
-
 	public static ColorOptionWidget areaChatPingColorOptionWidget;
 	public static String[] areaChatPingColorSetting = Utils.getprefsa("areaChatPing" + "_colorSetting", new String[]{"255", "183", "0", "255"});
 	public static ColorOptionWidget partyChatPingColorOptionWidget;
@@ -1945,7 +2158,7 @@ public class OptWnd extends Window {
 						ui.gui.optionInfoMsg("Highlight Cliffs is now " + (val ? "ENABLED" : "DISABLED") + "!", (val ? msgGreen : msgRed), Audio.resclip(val ? Toggle.sfxon : Toggle.sfxoff));
 					}
 				}
-			}, leftColumn.pos("bl").adds(0, 12).x(0));
+			}, leftColumn.pos("bl").adds(0, 18).x(0));
 			highlightCliffsCheckBox.tooltip = highlightCliffsTooltip;
 			leftColumn = add(highlightCliffsColorOptionWidget = new ColorOptionWidget("Highlight Cliffs Color:", "highlightCliffs", 115, Integer.parseInt(highlightCliffsColorSetting[0]), Integer.parseInt(highlightCliffsColorSetting[1]), Integer.parseInt(highlightCliffsColorSetting[2]), Integer.parseInt(highlightCliffsColorSetting[3]), (Color col) -> {
 				Ridges.setCliffHighlightMat();
@@ -2153,31 +2366,78 @@ public class OptWnd extends Window {
 					ui.gui.map.updatePlobWorkstationProgressHighlight();
 				}
 			}), showWorkstationProgressUnpreparedColorOptionWidget.pos("ur").adds(10, 0)).tooltip = resetButtonTooltip;
-			leftColumn = add(showMineSupportRadiiCheckBox = new CheckBox("Show Mine Support Radii"){
-				{a = (Utils.getprefb("showMineSupportRadii", false));}
+
+			leftColumn = add(showMineSupportCoverageCheckBox = new CheckBox("Show Mine Support Coverage"){
+                {a = (Utils.getprefb("showMineSupportTiles", false));}
 				public void set(boolean val) {
-					Utils.setprefb("showMineSupportRadii", val);
-					a = val;
-					MSRad.show(val);
-					if (ui != null && ui.gui != null){
-						ui.sess.glob.oc.gobAction(Gob::updateMineLadderRadius);
-						ui.gui.optionInfoMsg("Mine Support Radii are now " + (val ? "SHOWN" : "HIDDEN") + "!", (val ? msgGreen : msgGray), Audio.resclip(val ? Toggle.sfxon : Toggle.sfxoff));
-					}
+                    Utils.setprefb("showMineSupportTiles", val);
+                    a = val;
+                    if (ui != null && ui.gui != null && ui.gui.map != null && ui.sess != null && ui.sess.glob != null){
+                        if (val) {
+                            GroundSupportOverlay.getInstance().setMap(ui.sess.glob.map);
+                            ui.gui.map.enol(GroundSupportOverlay.TAG);
+                            ui.sess.glob.oc.gobAction(gob -> {
+                                if (GroundSupportOverlay.supportsMineCoverage(gob)) {
+                                    GroundSupportOverlay.getInstance().addGobCoverage(gob);
+                                }
+                            });
+                        } else {
+                            GroundSupportOverlay.getInstance().clear();
+                            ui.gui.map.disol(GroundSupportOverlay.TAG);
+                        }
+                        ui.gui.optionInfoMsg("Mine Support Coverage is now " + (val ? "SHOWN" : "HIDDEN") + "!", (val ? msgGreen : msgGray), Audio.resclip(val ? Toggle.sfxon : Toggle.sfxoff));
+                    }
 				}
-			}, leftColumn.pos("bl").adds(0, 12).x(0));
-			showMineSupportRadiiCheckBox.tooltip = showMineSupportRadiiTooltip;
-			leftColumn = add(showMineSupportSafeTilesCheckBox = new CheckBox("Show Mine Support Safe Tiles"){
-				{a = (Utils.getprefb("showMineSupportTiles", false));}
-				public void set(boolean val) {
-					Utils.setprefb("showMineSupportTiles", val);
-					a = val;
-					if (ui != null && ui.gui != null){
-						ui.sess.glob.oc.gobAction(Gob::updateSupportOverlays);
-						ui.gui.optionInfoMsg("Mine Support Safe Tiles are now " + (val ? "SHOWN" : "HIDDEN") + "!", (val ? msgGreen : msgGray), Audio.resclip(val ? Toggle.sfxon : Toggle.sfxoff));
-					}
-				}
-			}, leftColumn.pos("bl").adds(0, 2));
-			showMineSupportSafeTilesCheckBox.tooltip = showMineSupportSafeTilesTooltip;
+			}, leftColumn.pos("bl").adds(0, 22).x(0));
+            showMineSupportCoverageCheckBox.tooltip = showMineSupportCoverageTooltip;
+
+            leftColumn = add(safeTilesColorOptionWidget = new ColorOptionWidget("Safe Tiles Color:", "coveredTiles", 115, Integer.parseInt(coveredTilesColorSetting[0]), Integer.parseInt(coveredTilesColorSetting[1]), Integer.parseInt(coveredTilesColorSetting[2]), Integer.parseInt(coveredTilesColorSetting[3]), (Color col) -> {
+                GroundSupportOverlay.material = new Material(new BaseColor(col),
+                        new States.Depthtest(States.Depthtest.Test.LE));
+                GroundSupportOverlay.outlineMaterial = new Material(new BaseColor(new Color(col.getRed(), col.getGreen(), col.getBlue(), 255)),
+                        States.Depthtest.none, States.maskdepth);
+                if (ui != null && ui.gui != null && ui.gui.map != null && ui.sess != null && ui.sess.glob != null){
+                    GroundSupportOverlay.getInstance().clear();
+                    ui.gui.map.disol(GroundSupportOverlay.TAG);
+                    ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+                    scheduler.schedule(() -> {
+                        if (OptWnd.showMineSupportCoverageCheckBox.a) {
+                            GroundSupportOverlay.getInstance().setMap(ui.sess.glob.map);
+                            ui.gui.map.enol(GroundSupportOverlay.TAG);
+                            ui.sess.glob.oc.gobAction(gob -> {
+                                if (GroundSupportOverlay.supportsMineCoverage(gob)) {
+                                    GroundSupportOverlay.getInstance().addGobCoverage(gob);
+                                }
+                            });
+                        }
+                    }, 200, TimeUnit.MILLISECONDS);
+                }
+            }){}, leftColumn.pos("bl").adds(1, 0));
+            add(new Button(UI.scale(70), "Reset", false).action(() -> {
+                Utils.setprefsa("coveredTiles" + "_colorSetting", new String[]{"0", "105", "210", "60"});
+                safeTilesColorOptionWidget.cb.colorChooser.setColor(safeTilesColorOptionWidget.currentColor = new Color(0, 105, 210, 60));
+                GroundSupportOverlay.material = new Material(new BaseColor(safeTilesColorOptionWidget.currentColor),
+                        new States.Depthtest(States.Depthtest.Test.LE));
+                GroundSupportOverlay.outlineMaterial = new Material(new BaseColor(new Color(safeTilesColorOptionWidget.currentColor.getRed(), safeTilesColorOptionWidget.currentColor.getGreen(), safeTilesColorOptionWidget.currentColor.getBlue(), 255)),
+                        States.Depthtest.none, States.maskdepth);
+                if (ui != null && ui.gui != null && ui.gui.map != null && ui.sess != null && ui.sess.glob != null){
+                    GroundSupportOverlay.getInstance().clear();
+                    ui.gui.map.disol(GroundSupportOverlay.TAG);
+                    ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+                    scheduler.schedule(() -> {
+                        if (OptWnd.showMineSupportCoverageCheckBox.a) {
+                            GroundSupportOverlay.getInstance().setMap(ui.sess.glob.map);
+                            ui.gui.map.enol(GroundSupportOverlay.TAG);
+                            ui.sess.glob.oc.gobAction(gob -> {
+                                if (GroundSupportOverlay.supportsMineCoverage(gob)) {
+                                    GroundSupportOverlay.getInstance().addGobCoverage(gob);
+                                }
+                            });
+                        }
+                    }, 200, TimeUnit.MILLISECONDS);
+                }
+            }), safeTilesColorOptionWidget.pos("ur").adds(10, 0)).tooltip = resetButtonTooltip;
+
 			leftColumn = add(enableMineSweeperCheckBox = new CheckBox("Enable Mine Sweeper"){
 				{a = (Utils.getprefb("enableMineSweeper", true));}
 				public void set(boolean val) {
@@ -2261,8 +2521,18 @@ public class OptWnd extends Window {
 				public void changed(boolean val) {
 					Utils.setprefb("displayObjectHealthPercentage", val);
 				}
-			}, middleColumn.pos("bl").adds(0, -6).x(UI.scale(240)));
+			}, middleColumn.pos("bl").adds(0, -9).x(UI.scale(240)));
 			displayObjectDurabilityPercentageCheckBox.tooltip = displayObjectDurabilityPercentageTooltip;
+            middleColumn = add(showDurabilityCrackTextureCheckBox = new CheckBox("Show Durability Crack Texture"){
+                {a = (Utils.getprefb("showDurabilityCrackTexture", true));}
+                public void changed(boolean val) {
+                    Utils.setprefb("showDurabilityCrackTexture", val);
+                    if (ui != null && ui.gui != null) {
+                        ui.sess.glob.oc.gobAction(Gob::refreshGobHealthAttribute);
+                    }
+                }
+            }, middleColumn.pos("bl").adds(0, 2));
+            showDurabilityCrackTextureCheckBox.tooltip = showDurabilityCrackTextureTooltip;
 			middleColumn = add(displayObjectQualityOnInspectionCheckBox = new CheckBox("Display Object Quality on Inspection"){
 				{a = (Utils.getprefb("displayObjectQualityOnInspection", true));}
 				public void changed(boolean val) {
@@ -2305,6 +2575,21 @@ public class OptWnd extends Window {
 					ui.sess.glob.oc.gobAction(Gob::updateCritterAuras);
 				}
 			}), genericCritterAuraColorOptionWidget.pos("ur").adds(10, 0)).tooltip = resetButtonTooltip;
+
+
+            middleColumn = add(dangerousCritterAuraColorOptionWidget = new ColorOptionWidget("Dangerous Critter Aura:", "dangerousCritterAura", 115, Integer.parseInt(dangerousCritterAuraColorSetting[0]), Integer.parseInt(dangerousCritterAuraColorSetting[1]), Integer.parseInt(dangerousCritterAuraColorSetting[2]), Integer.parseInt(dangerousCritterAuraColorSetting[3]), (Color col) -> {
+                if (ui != null && ui.gui != null) {
+                    ui.sess.glob.oc.gobAction(Gob::updateCritterAuras);
+                }
+            }){}, middleColumn.pos("bl").adds(0, 4));
+            add(new Button(UI.scale(70), "Reset", false).action(() -> {
+                Utils.setprefsa("dangerousCritterAura" + "_colorSetting", new String[]{"193", "0", "0", "140"});
+                dangerousCritterAuraColorOptionWidget.cb.colorChooser.setColor(dangerousCritterAuraColorOptionWidget.currentColor = new Color(193, 0, 0, 140));
+                if (ui != null && ui.gui != null) {
+                    ui.sess.glob.oc.gobAction(Gob::updateCritterAuras);
+                }
+            }), dangerousCritterAuraColorOptionWidget.pos("ur").adds(10, 0)).tooltip = resetButtonTooltip;
+
 
 			middleColumn = add(showSpeedBuffAurasCheckBox = new CheckBox("Show Speed Buff Circle Auras"){
 				{a = (Utils.getprefb("showSpeedBuffAuras", true));}
@@ -2528,6 +2813,16 @@ public class OptWnd extends Window {
 				}
 			}, rightColumn.pos("bl").adds(0, 2));
 			showIconSignTextCheckBox.tooltip = showIconSignTextTooltip;
+            rightColumn = add(showProduceSackTextCheckBox = new CheckBox("Show Produce Sack Text"){
+                {a = (Utils.getprefb("showProduceSackText", true));}
+                public void changed(boolean val) {
+                    Utils.setprefb("showProduceSackText", val);
+                    if (ui != null && ui.gui != null){
+                        ui.gui.optionInfoMsg("Produce Sack Text is now " + (val ? "SHOWN" : "HIDDEN") + "!", (val ? msgGreen : msgGray), Audio.resclip(val ? Toggle.sfxon : Toggle.sfxoff));
+                    }
+                }
+            }, rightColumn.pos("bl").adds(0, 2));
+            showProduceSackTextCheckBox.tooltip = showProduceSackTextTooltip;
 			rightColumn = add(showCheeseRacksTierTextCheckBox = new CheckBox("Show Cheese Racks Tier Text"){
 				{a = (Utils.getprefb("showCheeseRacksTierText", false));}
 				public void changed(boolean val) {
@@ -2539,11 +2834,72 @@ public class OptWnd extends Window {
 			}, rightColumn.pos("bl").adds(0, 2));
 			showCheeseRacksTierTextCheckBox.tooltip = showCheeseRacksTierTextTooltip;
 
-			Widget backButton;
+			rightColumn = add(removeMapTileBordersCheckBox = new CheckBox("Remove Map Tile Borders"){
+				{a = Utils.getprefb("removeMapTileBorders", false);}
+				public void changed(boolean val) {
+					Utils.setprefb("removeMapTileBorders", val);
+					refreshMapCache();
+				}
+			}, rightColumn.pos("bl").adds(0, 15));
+            removeMapTileBordersCheckBox.tooltip = removeMapTileBordersTooltip;
+
+		rightColumn = add(simplifiedMapColorsCheckBox = new CheckBox("Simplified Map Colors"){
+			{a = (Utils.getprefb("simplifiedMapColorsEnabled", false));}
+			public void changed(boolean val) {
+				Utils.setprefb("simplifiedMapColorsEnabled", val);
+				SimplifiedMapColors.enabled = val;
+				refreshMapCache();
+			}
+		}, rightColumn.pos("bl").adds(0, 2));
+
+		String[] sprintLandsColor = Utils.getprefsa("simplifiedMapColors_sprintLands_colorSetting", new String[]{"0", "255", "0", "255"});
+		rightColumn = add(sprintLandsColorWidget = new ColorOptionWidget("4th speed:", "simplifiedMapColors_sprintLands", 160,
+			Integer.parseInt(sprintLandsColor[0]), Integer.parseInt(sprintLandsColor[1]),
+			Integer.parseInt(sprintLandsColor[2]), Integer.parseInt(sprintLandsColor[3]), (Color col) -> {
+				SimplifiedMapColors.SprintLands = col;
+				SimplifiedMapColors.updateSprintLandsMapping();
+				refreshMapCache();
+			}){}, rightColumn.pos("bl").adds(1, 1));
+
+		String[] thirdSpeedLandsColor = Utils.getprefsa("simplifiedMapColors_thirdSpeedLands_colorSetting", new String[]{"0", "128", "0", "255"});
+		rightColumn = add(thirdSpeedLandsColorWidget = new ColorOptionWidget("3rd speed:", "simplifiedMapColors_thirdSpeedLands", 160,
+			Integer.parseInt(thirdSpeedLandsColor[0]), Integer.parseInt(thirdSpeedLandsColor[1]),
+			Integer.parseInt(thirdSpeedLandsColor[2]), Integer.parseInt(thirdSpeedLandsColor[3]), (Color col) -> {
+				SimplifiedMapColors.ThirdSpeedLands = col;
+				SimplifiedMapColors.updateThirdSpeedLandsMapping();
+				refreshMapCache();
+			}){}, rightColumn.pos("bl").adds(0, 4));
+
+		String[] swampsColor = Utils.getprefsa("simplifiedMapColors_swamps_colorSetting", new String[]{"0", "128", "128", "255"});
+		rightColumn = add(swampsColorWidget = new ColorOptionWidget("Swamps:", "simplifiedMapColors_swamps", 160,
+			Integer.parseInt(swampsColor[0]), Integer.parseInt(swampsColor[1]),
+			Integer.parseInt(swampsColor[2]), Integer.parseInt(swampsColor[3]), (Color col) -> {
+				SimplifiedMapColors.Swamps = col;
+				SimplifiedMapColors.updateSwampsMapping();
+				refreshMapCache();
+			}){}, rightColumn.pos("bl").adds(0, 4));
+
+		String[] thicketColor = Utils.getprefsa("simplifiedMapColors_thicket_colorSetting", new String[]{"255", "255", "0", "255"});
+		rightColumn = add(thicketColorWidget = new ColorOptionWidget("Thicket:", "simplifiedMapColors_thicket", 160,
+			Integer.parseInt(thicketColor[0]), Integer.parseInt(thicketColor[1]),
+			Integer.parseInt(thicketColor[2]), Integer.parseInt(thicketColor[3]), (Color col) -> {
+				SimplifiedMapColors.Thicket = col;
+				SimplifiedMapColors.updateThicketMapping();
+				refreshMapCache();
+			}){}, rightColumn.pos("bl").adds(0, 4));
+
+		Widget backButton;
 			add(backButton = new PButton(UI.scale(200), "Back", 27, back, "Advanced Settings"), leftColumn.pos("bl").adds(0, 18).x(0));
 			pack();
 			centerBackButton(backButton, this);
 		}
+
+		private void refreshMapCache() {
+			if (ui != null && ui.gui != null && ui.gui.mapfile != null && ui.gui.mapfile.view != null) {
+				ui.gui.mapfile.view.refreshMapCache();
+			}
+		}
+
 
 		private int addbtn(Widget cont, String nm, KeyBinding cmd, int y) {
 			return (cont.addhl(new Coord(0, y), cont.sz.x,
@@ -2773,14 +3129,15 @@ public class OptWnd extends Window {
 		Label topNote = new Label("Don't use the same keys on multiple Keybinds!");
 		topNote.setcolor(Color.RED);
 		y = adda(topNote, UI.scale(155), y, 0.5, 0.0).pos("bl").adds(0, 5).y;
-		y = adda(new Label("If you do that, only one of them will work. God knows which."), 310 / 2, y, 0.5, 0.0).pos("bl").adds(0, 5).y;
-		Scrollport scroll = add(new Scrollport(UI.scale(new Coord(310, 360))), 0, 60);
+		y = adda(new Label("If you do that, only one of them will work. God knows which."), UI.scale(155), y, 0.5, 0.0).pos("bl").adds(0, 5).y;
+		Scrollport scroll = add(new Scrollport(UI.scale(310, 360)), UI.scale(0, 60));
 	    Widget cont = scroll.cont;
 	    Widget prev;
 	    y = 0;
 	    y = cont.adda(new Label("Main menu"), cont.sz.x / 2, y, 0.5, 0.0).pos("bl").adds(0, 5).y;
 	    y = addbtn(cont, "Inventory", GameUI.kb_inv, y);
 	    y = addbtn(cont, "Equipment", GameUI.kb_equ, y);
+        y = addbtn(cont, "Belt", GameUI.kb_blt, y);
 	    y = addbtn(cont, "Character sheet", GameUI.kb_chr, y);
 	    y = addbtn(cont, "Map window", GameUI.kb_map, y);
 	    y = addbtn(cont, "Kith & Kin", GameUI.kb_bud, y);
@@ -2824,7 +3181,9 @@ public class OptWnd extends Window {
 	    for(int i = 0; i < Fightsess.kb_acts.length; i++)
 		y = addbtn(cont, String.format("Combat action %d", i + 1), Fightsess.kb_acts[i], y);
 		y = addbtnImproved(cont, "Cycle through targets", "This only cycles through the targets you are currently engaged in combat with.", Color.WHITE, Fightsess.kb_relcycle, y);
-		y = addbtnImproved(cont, "Switch to nearest target", "This only switches to the nearest target you are currently engaged in combat with.", Color.WHITE, Fightsess.kb_nearestTarget, y);
+		y = addbtnImproved(cont, "Switch to nearest target", "This only switches to the nearest target you are currently engaged in combat with.", Color.WHITE, GameUI.kb_nearestTarget, y);
+		y = addbtnImproved(cont, "Switch to leader marked target", "Switches to the target marked by your party leader (the red crosshair)." +
+				"\n\n$col[185,185,185]{Only works if your party leader has marked a target before.}", Color.WHITE, GameUI.kb_leaderTarget, y);
 		y = addbtnImproved(cont, "Aggro Nearest Player/Animal", "Selects the nearest non-friendly Player or Animal to attack, based on your situation:" +
 				"\n\n$col[218,163,0]{Case 1:} $col[185,185,185]{If you are in combat with Players, it will only attack other not-already-aggroed non-friendly players.}" +
 				"\n$col[218,163,0]{Case 2:} $col[185,185,185]{If you are in combat with Animals, it will try to attack the closest not-already-aggroed player. If none is found, try to attack the closest animal. Once this happens, you're back to Case 1.}" +
@@ -2836,6 +3195,8 @@ public class OptWnd extends Window {
 				"\n\n$col[185,185,185]{Party members will never be attacked by this button. You can exclude other specific player groups from being attacked in the Aggro Exclusion Settings.}", new Color(255, 0, 0,255), GameUI.kb_aggroNearestPlayerButton, y);
 		y = addbtnImproved(cont, "Aggro all Non-Friendly Players", "Tries to attack everyone in range. " +
 				"\n\n$col[185,185,185]{Party members will never be attacked by this button. You can exclude other specific player groups from being attacked in the Aggro Exclusion Settings.}", new Color(255, 0, 0,255), GameUI.kb_aggroAllNonFriendlyPlayers, y);
+		y = addbtnImproved(cont, "Push Nearest Player", "Pushes the nearest non-friendly player within range." +
+				"\n\n$col[185,185,185]{Party members will never be pushed by this button. Range: 20 tiles}", new Color(255, 165, 0,255), GameUI.kb_pushPlayerButton, y);
 		y = addbtnImproved(cont, "Peace Current Target", "", new Color(0, 255, 34,255), GameUI.kb_peaceCurrentTarget, y);
 
 		y = cont.adda(new Label("Other Custom features"), cont.sz.x / 2, y + UI.scale(10), 0.5, 0.0).pos("bl").adds(0, 5).y;
@@ -2897,6 +3258,7 @@ public class OptWnd extends Window {
 		y = addbtn(cont, "Show Bee Skep Harvest Icons", GameUI.kb_toggleBeeSkepIcons, y);
 		y = addbtn(cont, "Show Barrel Contents Text", GameUI.kb_toggleBarrelContentsText, y);
 		y = addbtn(cont, "Show Icon Sign Text", GameUI.kb_toggleIconSignText, y);
+        y = addbtn(cont, "Show Produce Sack Text", GameUI.kb_toggleProduceSackText, y);
 		y = addbtn(cont, "Show Cheese Racks Tier Text", GameUI.kb_toggleCheeseRacksTierText, y);
 		y = addbtn(cont, "Show Objects Speed", GameUI.kb_toggleSpeedInfo, y);
 		y = addbtn(cont, "Hide/Show Cursor Item", GameUI.kb_toggleCursorItem, y);
@@ -3240,6 +3602,7 @@ public class OptWnd extends Window {
 	public static CheckBox useImprovedInventoryTransferControlsCheckBox;
 	public static CheckBox tileCenteringCheckBox;
 	public static CheckBox clickThroughContainerDecalCheckBox;
+	public static CheckBox continuousWalkingCheckBox;
 
 	public class AlteredGameplaySettingsPanel extends Panel {
 
@@ -3334,6 +3697,13 @@ public class OptWnd extends Window {
 				{a = Utils.getprefb("clickThroughContainerDecal", true);}
 				public void changed(boolean val) {
 					Utils.setprefb("clickThroughContainerDecal", val);
+				}
+			}, prev.pos("bl").adds(0, 12));
+
+			prev = add(continuousWalkingCheckBox = new CheckBox("Continuous Walking when holding down Left Click"){
+				{a = Utils.getprefb("continuousWalking", false);}
+				public void changed(boolean val) {
+					Utils.setprefb("continuousWalking", val);
 				}
 			}, prev.pos("bl").adds(0, 12));
 
@@ -3610,6 +3980,7 @@ public class OptWnd extends Window {
 	public static CheckBox disableOpiumHighCheckBox;
 	public static CheckBox disableLibertyCapsHighCheckBox;
 	public static CheckBox disableDrunkennessDistortionCheckBox;
+    public static CheckBox onlyRenderCameraVisibleObjectsCheckBox;
 	public static HSlider palisadesAndBrickWallsScaleSlider;
 	private Button palisadesAndBrickWallsScaleResetButton;
 	public static CheckBox enableSkyboxCheckBox;
@@ -4032,6 +4403,15 @@ public class OptWnd extends Window {
 				}
 			}, rightColumn.pos("bl").adds(0, 2));
 
+            rightColumn = add(onlyRenderCameraVisibleObjectsCheckBox = new CheckBox("Only Render Camera-Visible Objects (Experimental)"){
+                {a = (Utils.getprefb("onlyRenderCameraVisibleObjects", false));}
+                public void changed(boolean val) {
+                    Utils.setprefb("onlyRenderCameraVisibleObjects", val);
+                }
+            }, rightColumn.pos("bl").adds(0, 34));
+            onlyRenderCameraVisibleObjectsCheckBox.tooltip = onlyRenderCameraVisibleObjectsTooltip;
+
+
 			Widget backButton;
 			add(backButton = new PButton(UI.scale(200), "Back", 27, back, "Advanced Settings"), leftColumn.pos("bl").adds(0, 38));
 			pack();
@@ -4372,7 +4752,7 @@ public class OptWnd extends Window {
 				public boolean mousedown(MouseDownEvent ev) {
 					if (ev.b != 1)
 						return true;
-					File file = new File(haven.MainFrame.gameDir + "AlarmSounds/" + finalFilename.buf.line() + ".wav");
+					File file = new File(haven.Client.gameDir + "AlarmSounds/" + finalFilename.buf.line() + ".wav");
 					if (!file.exists() || file.isDirectory()) {
 						if (ui != null && ui.gui != null)
 							ui.gui.msg("Error while playing an alarm, file " + file.getAbsolutePath() + " does not exist!", Color.WHITE);
@@ -4383,7 +4763,7 @@ public class OptWnd extends Window {
 						AudioFormat tgtFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, 44100, 16, 2, 4, 44100, false);
 						AudioInputStream pcmStream = AudioSystem.getAudioInputStream(tgtFormat, in);
 						Audio.CS clip = new Audio.PCMClip(pcmStream, 2, 2);
-						((Audio.Mixer) Audio.player.stream).add(new Audio.VolAdjust(clip, finalVolume.val / 50.0));
+                        ui.globalSfxPlay(new Audio.VolAdjust(clip, finalVolume.val / 50.0));
 					} catch (UnsupportedAudioFileException | IOException e) {
 						e.printStackTrace();
 					}
@@ -4792,18 +5172,15 @@ public class OptWnd extends Window {
 	super(Coord.z, "Options            ", true); // ND: Added a bunch of spaces to the caption(title) in order avoid text cutoff when changing it
 	autoDropManagerWindow = new AutoDropManagerWindow();
 	flowerMenuAutoSelectManagerWindow = new FlowerMenuAutoSelectManagerWindow();
-	if (simpleUIFuture != null)
-		simpleUIFuture.cancel(true);
 	main = add(new Panel());
-	Panel video = add(new VideoPanel(main));
-	Panel audio = add(new AudioPanel(main));
-	Panel keybind = add(new BindingPanel(main));
 
 	int y = UI.scale(6);
 	Widget prev;
-	y = main.add(new PButton(UI.scale(200), "Video Settings", -1, video, "Video Settings"), 0, y).pos("bl").adds(0, 5).y;
-	y = main.add(new PButton(UI.scale(200), "Audio Settings", -1, audio, "Audio Settings"), 0, y).pos("bl").adds(0, 5).y;
-	y = main.add(new PButton(UI.scale(200), "Keybindings (Hotkeys)", -1, keybind, "Keybindings (Hotkeys)"), 0, y).pos("bl").adds(0, 5).y;
+//	y = main.add(new PButton(UI.scale(200), "Interface settings", 'v', () -> new InterfacePanel(main)), 0, y).pos("bl").adds(0, 5).y;
+//	y += UI.scale(60);
+	y = main.add(videoButton = new PButton(UI.scale(200), "Video settings", 'v', () -> new VideoPanel(ui, main), "Video Settings"), 0, y).pos("bl").adds(0, 5).y;
+	y = main.add(audioButton = new PButton(UI.scale(200), "Audio settings", 'a', () -> new AudioPanel(ui, main), "Audio Settings"), 0, y).pos("bl").adds(0, 5).y;
+	y = main.add(keybindButton = new PButton(UI.scale(200), "Keybindings", 'k', () -> new BindingPanel(main), "Keybindings (Hotkeys)"), 0, y).pos("bl").adds(0, 5).y;
 	y += UI.scale(20);
 
 	advancedSettings = add(new Panel());
@@ -4872,7 +5249,7 @@ public class OptWnd extends Window {
 	    }), 0, y).pos("bl").adds(0, 5).y;
 	}
 	y = main.add(new Button(UI.scale(200), "Close", false).action(() -> {
-		    OptWnd.this.hide();
+		    OptWnd.this.reqclose();
 	}), 0, y).pos("bl").adds(0, 5).y;
 	this.main.pack();
 
@@ -4883,13 +5260,9 @@ public class OptWnd extends Window {
 	this(true);
     }
 
-    public void wdgmsg(Widget sender, String msg, Object... args) {
-	if((sender == this) && (msg == "close")) {
-	    hide();
-		cap = "Options            ";
-	} else {
-	    super.wdgmsg(sender, msg, args);
-	}
+    public void reqclose() {
+	hide();
+	cap = "Options            ";
     }
 
     public void show() {
@@ -4900,11 +5273,6 @@ public class OptWnd extends Window {
 	private void centerBackButton(Widget backButton, Widget parent){ // ND: Should only be used at the very end after the panel was already packed once.
 		backButton.move(new Coord(parent.sz.x/2-backButton.sz.x/2, backButton.c.y));
 		pack();
-	}
-
-	private void resetSimpleUIChanged(){
-		simpleUIChanged = false;
-		simpleUIFuture.cancel(true);
 	}
 
 	private void resetSkyboxCheckbox(){
@@ -4919,10 +5287,16 @@ public class OptWnd extends Window {
 			"\n" +
 			"\n$col[185,185,185]{I really try my best to support this setting, but I can't guarantee everything will work." +
 			"\nUnless you're on a 4K or 8K display, I'd keep this at 1.00x.}", UI.scale(300));
-	private static final Object simplifiedUIThemeCheckBoxTooltip = RichText.render("$col[185,185,185]{A more boring theme for the UI...}", UI.scale(300));
-	private static final Object extendedMouseoverInfoTooltip = RichText.render("Holding Ctrl+Shift shows the Resource Path when mousing over Objects or Tiles. " +
-			"\nThis setting will add a lot of additional information on top of that." +
-			"\n" +
+    private static final Object uiThemeTooltip = RichText.render("This sets the overall theme for the User Interface." +
+            "\n" +
+            "\nAdditionally, you can add files to the \"Custom Theme\" folder, to create your own theme (which won't get erased when you update the client). " +
+            "\nThe Custom Theme folder can be found in your $col[218,163,0]{client folder}, under $col[218,163,0]{\\ res \\ customclient \\ uiThemes \\ Custom Theme}" +
+            "\n" +
+            "\n$col[185,185,185]{You don't need to change *everything* for the Custom Theme to work. If it's missing something, it just defaults to whatever the \"Nightdawg Dark\" theme uses.}", UI.scale(300));
+	private static final Object extendedMouseoverInfoTooltip = RichText.render("This setting adds additional info to:" +
+			"\n- Object Ctrl+Shift Mouseover Info (Adds lots of info)" +
+			"\n- Item Tooltips (Shows Resource Name)" +
+			"\n- Action Button Tooltips (Shows Resource Name)" +
 			"\n$col[185,185,185]{Unless you're a client dev, you don't really need to enable this setting, like ever.}", UI.scale(300));
 	private static final Object disableMenuGridHotkeysTooltip = RichText.render("This completely disables the hotkeys for the action buttons & categories in the bottom right corner menu (aka the menu grid)." +
 			"\n" +
@@ -4998,12 +5372,7 @@ public class OptWnd extends Window {
 	private static final Object showCirclesUnderCombatFoesTooltip = RichText.render("This will put a colored circle under all enemies that you are currently in combat with.", UI.scale(300));
 	private static final Object targetSpriteTooltip = RichText.render("The target sprite uses the same color you set for Combat Foes.", UI.scale(300));
 	private static final Object drawChaseVectorsTooltip = RichText.render("If this setting is enabled, colored lines will be drawn between chasers and chased targets." +
-			"\n=====================" +
-			"\n$col[255,255,255]{White: }You are the chaser." +
-			"\n$col[0,160,0]{Green: }A party member is the chaser." +
-			"\n$col[185,0,0]{Red: }A player is chasing you or a party member." +
-			"\n$col[165,165,165]{Gray: }An animal is the chaser, OR random (non-party) players are chasing each other." +
-			"\n=====================" +
+			"\n" +
 			"\n$col[218,163,0]{Note:} $col[185,185,185]{Chase vectors include queuing attacks, clicking a critter to pick up, or simply following someone.}" +
 			"\n$col[218,163,0]{Disclaimer:} $col[185,185,185]{Chase vectors sometimes don't show when chasing a critter that is standing still. The client treats this as something else for some reason and I can't fix it.}", UI.scale(430));
 	private static final Object drawYourCurrentPathTooltip = RichText.render("When this is enabled, a straight line will be drawn between your character and wherever you clicked" +
@@ -5041,7 +5410,8 @@ public class OptWnd extends Window {
 	private static final Object showObjectCollisionBoxesTooltip = RichText.render("This shows the collision boundaries of objects in the world by outlining each edge with a line." +
 			"\n" +
 			"\n$col[218,163,0]{Keybind:} $col[185,185,185]{This can also be toggled using a keybind.}", UI.scale(300));
-	private static final Object displayObjectDurabilityPercentageTooltip = RichText.render("This makes objects that took decay hits also show a percentage number, on top of the cracked texture overlay.", UI.scale(300));
+	private static final Object displayObjectDurabilityPercentageTooltip = RichText.render("This makes objects that took decay hits show a percentage number.", UI.scale(300));
+    private static final Object showDurabilityCrackTextureTooltip = RichText.render("This makes objects that took decay hits have a cracked texture.", UI.scale(300));
 	private static final Object displayObjectQualityOnInspectionTooltip = RichText.render("This makes objects that have been inspected show their quality number on top, until unload them.", UI.scale(300));
 	private static final Object showCritterAurasTooltip = RichText.render("This will draw clickable circles under all critters, which makes it easier to spot them, and right-click to chase them." +
 			"\n" +
@@ -5070,13 +5440,15 @@ public class OptWnd extends Window {
 	private static final Object showIconSignTextTooltip = RichText.render("This adds text on top of icon signs, that shows the name of the currently displayed icon. Empty signs won't show any text." +
 			"\n" +
 			"\n$col[218,163,0]{Keybind:} $col[185,185,185]{This can also be toggled using a keybind.}", UI.scale(300));
+    private static final Object showProduceSackTextTooltip = RichText.render("This adds text on top of produce sacks, that shows the name of the currently displayed icon. Empty sacks won't show any text." +
+            "\n" +
+            "\n$col[218,163,0]{Keybind:} $col[185,185,185]{This can also be toggled using a keybind.}", UI.scale(300));
 	private static final Object showCheeseRacksTierTextTooltip = RichText.render("This adds text on top of each cheese tray inside cheese racks, that shows the current tier of the cheese present in the tray." +
 			"\n" +
 			"\n$col[185,185,185]{Unfortunately, the server only sends the tier info, so the client can't tell which exact cheese is in the trays.}" +
 			"\n" +
 			"\n$col[218,163,0]{Keybind:} $col[185,185,185]{This can also be toggled using a keybind.}", UI.scale(300));
-	private static final Object showMineSupportRadiiTooltip = RichText.render("$col[218,163,0]{Action Button:} $col[185,185,185]{This setting can also be turned on/off using an action button from the menu grid (Custom Client Extras → Toggles).}", UI.scale(320));
-	private static final Object showMineSupportSafeTilesTooltip = RichText.render("$col[218,163,0]{Action Button:} $col[185,185,185]{This setting can also be turned on/off using an action button from the menu grid (Custom Client Extras → Toggles).}", UI.scale(320));
+	private static final Object showMineSupportCoverageTooltip = RichText.render("$col[218,163,0]{Action Button:} $col[185,185,185]{This setting can also be turned on/off using an action button from the menu grid (Custom Client Extras → Toggles).}", UI.scale(320));
 	private static final Object enableMineSweeperTooltip = RichText.render("This will cause cave dust tiles to show the number of potential cave-ins surrounding them, just like in Minesweeper." +
 			"\n$col[218,163,0]{Note:} $col[185,185,185]{If a cave-in has been mined out, the tiles surrounding it will still drop cave dust, and they will still show a number on the ground. The cave dust tiles are pre-generated with the world. That's just how Loftar coded it.}" +
 			"\n$col[218,163,0]{Note:} $col[185,185,185]{You can still pick up the cave dust item off the ground. The numbers are affected only by the duration of the falling dust particles effect (aka dust rain), which can be set below}" +
@@ -5102,7 +5474,7 @@ public class OptWnd extends Window {
 			"\n" +
 			"\n$col[218,163,0]{Keybind:} $col[185,185,185]{This can also be toggled using a keybind.}", UI.scale(300));
     private static final Object partyChatPingColorOptionTooltip = RichText.render("$col[218,163,0]{Note:} $col[185,185,185]{If you ping players for your party, you will instead set a Party Mark on them.}", UI.scale(300));
-
+    private static final Object removeMapTileBordersTooltip = RichText.render("$col[200,0,0]{WARNING: This setting might not work with your Web Map Integration!}", UI.scale(300));
 
 	// Quality Display Settings Tooltips
 	private static final Object customQualityColorsTooltip = RichText.render("These numbers and colors are completely arbitrary, and you can change them to whatever you like." +
@@ -5277,6 +5649,9 @@ public class OptWnd extends Window {
 			"\n" +
 			"\n$col[185,185,185]{I have no idea why this disgusting effect exists at all. " +
 			"\nThe vanilla client does not warn you about it in any way, shape or form.}", UI.scale(280));
+    private static final Object onlyRenderCameraVisibleObjectsTooltip = RichText.render("Render only objects within the camera’s view frustum. Objects behind the camera are not rendered, reducing GPU load and potentially improving performance." +
+            "\n" +
+            "\n$col[218,163,0]{This is an experimental feature. It should work fine, but I wouldn't trust it with my life.}", UI.scale(300));
 
 	// Server Integration Settings Tooltips
 	private static final Object uploadMapTilesTooltip = RichText.render("Enable this to upload your map tiles to your web map server.", UI.scale(300));
@@ -5295,8 +5670,9 @@ public class OptWnd extends Window {
 	@Override
 	protected void attached() {
 		super.attached();
-		if (ui != null)
-			currentgprefs = ui.gprefs;
+		videoButton.preload();
+		audioButton.preload();
+		keybindButton.preload();
 		if (ui.gui != null) {
 			ui.gui.add(autoDropManagerWindow); // ND: this.parent.parent is root widget in login screen or gui in game.
 			autoDropManagerWindow.hide();

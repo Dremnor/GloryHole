@@ -28,6 +28,7 @@ public class TileHighlight {
 
 	public static final Map<String, List<String>> tileHighlightNames = new HashMap<String, List<String>>(){{
 		put("Ground Tiles", new ArrayList<String>(){{
+            add("gfx/tiles/acreclaypit");
 			add("gfx/tiles/ashland");
             add("gfx/tiles/badlands");
 			add("gfx/tiles/beach");
@@ -166,41 +167,49 @@ public class TileHighlight {
 		}});
 	}};
 	public static List<String> savedHighlightedMapTiles = new ArrayList<String>(Arrays.asList(Utils.getprefsa("savedHighlightedMapTiles_2", new String[0])));
-    
-    public static boolean isHighlighted(String name) {
-	synchronized (highlight) {
-	    return highlight.contains(name);
+
+	public static boolean isHighlighted(String name) {
+		synchronized (highlight) {
+			return highlight.contains(name);
+		}
 	}
-    }
-    
-    public static void toggle(String name) {
-	synchronized (highlight) {
-	    if(highlight.contains(name)) {
-		unhighlight(name);
-		savedHighlightedMapTiles.remove(name);
-	    } else {
-		highlight(name);
-		savedHighlightedMapTiles.add(name);
-	    }
+
+	public static void toggle(String name) {
+		synchronized (highlight) {
+			if (highlight.contains(name)) {
+				if (highlight.remove(name)) {
+					seq++;
+					savedHighlightedMapTiles.remove(name);
+				}
+			} else {
+				if (highlight.add(name)) {
+					seq++;
+					savedHighlightedMapTiles.add(name);
+				}
+			}
+			Utils.setprefsa("savedHighlightedMapTiles_2", savedHighlightedMapTiles.toArray(new String[0]));
+		}
 	}
-		Utils.setprefsa("savedHighlightedMapTiles_2", savedHighlightedMapTiles.toArray(new String[0]));
-    }
-    
-    public static void highlight(String name) {
-	synchronized (highlight) {
-	    if(highlight.add(name)) {
-		seq++;
-	    }
+
+	public static void highlight(String name) {
+		synchronized (highlight) {
+			if (highlight.add(name)) {
+				seq++;
+				if (!savedHighlightedMapTiles.contains(name)) {
+					savedHighlightedMapTiles.add(name);
+				}
+			}
+		}
 	}
-    }
-    
-    public static void unhighlight(String name) {
-	synchronized (highlight) {
-	    if(highlight.remove(name)) {
-		seq++;
-	    }
+
+	public static void unhighlight(String name) {
+		synchronized (highlight) {
+			if (highlight.remove(name)) {
+				seq++;
+				savedHighlightedMapTiles.remove(name);
+			}
+		}
 	}
-    }
     
     public static BufferedImage olrender(MapFile.DataGrid grid) {
 	TileHighlightOverlay ol = new TileHighlightOverlay(grid);
@@ -235,6 +244,8 @@ public class TileHighlight {
     }
     
     private static void tryInit(GameUI gui) {
+	if(gui != null && gui.mapfile != null)
+	    gui.mapfile.toggleol(TileHighlight.TAG, true);
 	if(initialized) {return;}
 	categories.add(ALL);
 	ArrayList<TileItem> all = new ArrayList<>();
@@ -252,7 +263,6 @@ public class TileHighlight {
 	    all.addAll(items);
 	}
 	all.sort(Comparator.comparing(item -> item.name));
-	gui.mapfile.toggleol(TileHighlight.TAG, MiniMap.highlightMapTiles);
 	initialized = true;
     }
     
@@ -293,24 +303,20 @@ public class TileHighlight {
 		@Override
 		public void changed(boolean val) {
 		    list.filtered.forEach(item -> {
-				synchronized (highlight) {
-					if (val) {
-						highlight(item.res);
-						savedHighlightedMapTiles.add(item.res);
-					} else {
-						unhighlight(item.res);
-						savedHighlightedMapTiles.remove(item.res);
-					}
-				}
+			if (val) {
+			    highlight(item.res);
+			} else {
+			    unhighlight(item.res);
+			}
 		    });
-			Utils.setprefsa("savedHighlightedMapTiles_2", savedHighlightedMapTiles.toArray(new String[0]));
+		    Utils.setprefsa("savedHighlightedMapTiles_2", savedHighlightedMapTiles.toArray(new String[0]));
 		}
 	    }, UI.scale(135, 0));
 	    h += UI.scale(5);
 	    
 	    add(new CategoryList(UI.scale(125), 4, elh), 0, h).sel = category;
 	    
-	    list = add(new TileList(UI.scale(220), UI.unscale(12)), UI.scale(135), h);
+	    list = add(new TileList(UI.scale(220), 12), UI.scale(135), h);
 	    filter = adda(new Label(FILTER_DEFAULT), list.pos("ur").y(0), 1, 0);
 	    pack();
 	    setfocus(list);
@@ -328,7 +334,7 @@ public class TileHighlight {
 	
 	private void updateFilter(String text) {
 	    filter.settext((text == null || text.isEmpty()) ? FILTER_DEFAULT : text);
-	    filter.c = list.pos("ur").y(0).adds(-filter.sz.x, 0);
+	    filter.c = list.pos("ur").y(0).add(-filter.sz.x, 0);
 	}
 	
 	@Override
@@ -500,7 +506,11 @@ public class TileHighlight {
 	    for (c.x = 0; c.x < cmaps.x; c.x++) {
 		for (c.y = 0; c.y < cmaps.y; c.y++) {
 		    int tile = grid.gettile(c);
+		    if(tile < 0 || tile >= grid.tilesets.length)
+			continue;
 		    MapFile.TileInfo tileset = grid.tilesets[tile];
+		    if(tileset == null || tileset.res == null)
+			continue;
 		    boolean v = isHighlighted(tileset.res.name);
 		    set(c, v);
 		    if(v) { setn(c, true); } //make 1 tile border around actual tiles

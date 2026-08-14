@@ -20,6 +20,7 @@ public class CombatDistanceTool extends Window implements Runnable {
             Map.entry("gfx/kritter/cattle/cattle", 27.0),
             Map.entry("gfx/kritter/badger/badger", 19.9),
             Map.entry("gfx/kritter/bear/bear", 24.7),
+            Map.entry("gfx/kritter/bear/polarbear", 24.7), // ND: I'm doing guess work here, but I bet they're just copy-pasted bears
             Map.entry("gfx/kritter/boar/boar", 25.1),
             Map.entry("gfx/kritter/caveangler/caveangler", 27.2),
             Map.entry("gfx/kritter/cavelouse/cavelouse", 22.0),
@@ -28,6 +29,7 @@ public class CombatDistanceTool extends Window implements Runnable {
             Map.entry("gfx/kritter/lynx/lynx", 20.0),
             Map.entry("gfx/kritter/mammoth/mammoth", 30.3),
             Map.entry("gfx/kritter/moose/moose", 25.0),
+            Map.entry("gfx/kritter/narwhal/narwhal", 32.0),
             Map.entry("gfx/kritter/orca/orca", 49.25),
             Map.entry("gfx/kritter/reddeer/reddeer", 25.0),
             Map.entry("gfx/kritter/roedeer/roedeer", 22.0),

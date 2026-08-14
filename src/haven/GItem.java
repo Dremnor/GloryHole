@@ -27,6 +27,7 @@
 package haven;
 
 import java.util.*;
+import java.util.function.*;
 
 import haven.automated.alchemybook.AlchemyService;
 import haven.automated.cookbook.FoodService;
@@ -36,6 +37,7 @@ import haven.res.ui.tt.q.quality.Quality;
 import haven.res.ui.tt.wear.Wear;
 
 import java.awt.Color;
+import java.awt.Graphics;
 import java.awt.image.BufferedImage;
 
 public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owner, RandomSource {
@@ -51,7 +53,7 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
     private Widget hovering;
     private boolean hoverset;
     private GSprite spr;
-    private ItemInfo.Raw rawinfo;
+	private ItemInfo.Raw rawinfo = ItemInfo.Raw.nil;;
     public List<ItemInfo> info = Collections.emptyList();
 	public boolean sendttupdate = false;
 	public long meterUpdated = 0; // ND: last time meter was updated, ms
@@ -72,6 +74,25 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 
     public interface RStateInfo {
 	public Pipe.Op rstate();
+
+	public static final Function<List<ItemInfo>, Supplier<Pipe.Op>> combine = info -> {
+	    ArrayList<GItem.RStateInfo> ols = new ArrayList<>();
+	    for(ItemInfo inf : info) {
+		if(inf instanceof GItem.RStateInfo)
+		    ols.add((GItem.RStateInfo)inf);
+	    }
+	    if(ols.size() == 0)
+		return(() -> null);
+	    if(ols.size() == 1) {
+		Pipe.Op op = ols.get(0).rstate();
+		return(() -> op);
+	    }
+	    Pipe.Op[] ops = new Pipe.Op[ols.size()];
+	    for(int i = 0; i < ops.length; i++)
+		ops[i] = ols.get(0).rstate();
+	    Pipe.Op cmp = Pipe.Op.compose(ops);
+	    return(() -> cmp);
+	};
     }
 
     public interface ColorInfo extends RStateInfo {
@@ -211,23 +232,25 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 	hoverset = false;
     }
 
-    public List<ItemInfo> info() {
-	if(this.info == null) {
-	    List<ItemInfo> info = ItemInfo.buildinfo(this, rawinfo);
-	    addcontinfo(info);
-	    Resource.Pagina pg = res.get().layer(Resource.pagina);
-	    if(pg != null)
-		info.add(new ItemInfo.Pagina(this, pg.text));
-	    this.info = info;
-		try {
-			if (FoodService.isValidEndpoint() && !checkForHempBuff()) {
-				FoodService.checkFood(info, getres());
-				AlchemyService.checkAlchemying(info, getres());
-			}
-		} catch (Exception ignored) {}
+	public List<ItemInfo> info() {
+		if(this.info == null) {
+			ItemInfo.Raw raw = (rawinfo != null) ? rawinfo : ItemInfo.Raw.nil;
+			List<ItemInfo> info = ItemInfo.buildinfo(this, raw);
+			addcontinfo(info);
+			Resource.Pagina pg = res.get().layer(Resource.pagina);
+			if(pg != null)
+				info.add(new ItemInfo.Pagina(this, pg.text));
+			info.add(new ItemInfo.ResourceName(this, res.get().name));
+			this.info = info;
+			try {
+				if (FoodService.isValidEndpoint() && !checkForHempBuff()) {
+					FoodService.checkFood(info, getres(), ui.gui.genus);
+					AlchemyService.checkAlchemying(info, getres());
+				}
+			} catch (Exception ignored) {}
+		}
+		return(this.info);
 	}
-	return(this.info);
-    }
 
 
 
@@ -256,18 +279,24 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 	if(name == "num") {
 	    num = Utils.iv(args[0]);
 	} else if(name == "chres") {
-	    synchronized(this) {
-		res = ui.sess.getresv(args[0]);
-		sdt = (args.length > 1) ? new MessageBuf((byte[])args[1]) : MessageBuf.nil;
-		spr = null;
-	    }
+		synchronized(this) {
+			res = ui.sess.getresv(args[0]);
+			sdt = (args.length > 1) ? new MessageBuf((byte[])args[1]) : MessageBuf.nil;
+			spr = null;
+		}
+		qBuff = null;
+		stackQualityTex = null;
+		info = null;
+		infoseq++;
 	} else if(name == "tt") {
-	    info = null;
-	    rawinfo = new ItemInfo.Raw(args);
+		info = null;
+		qBuff = null;
+		stackQualityTex = null;
+		rawinfo = new ItemInfo.Raw(args);
 		if (sendttupdate) {
 			wdgmsg("ttupdate");
 		}
-	    infoseq++;
+		infoseq++;
 		meterUpdated = System.currentTimeMillis();
 	} else if(name == "meter") {
 	    meter = Utils.iv(args[0]);
@@ -294,7 +323,11 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 	    contentsnm = (String)args[1];
 	    contentsid = null;
 	    if(args.length > 2)
-		contentsid = args[2];
+			contentsid = args[2];
+		qBuff = null;
+		stackQualityTex = null;
+		info = null;
+		infoseq++;
 	    contentswnd = contparent().add(new ContentsWindow(this, contents));
 		if(this.parent instanceof Equipory){
 			Equipory equipory = (Equipory) this.parent;
@@ -305,16 +338,6 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 
     public static interface ContentsInfo {
 	public void propagate(List<ItemInfo> buf, ItemInfo.Owner outer);
-    }
-
-    /* XXX: Please remove me some time, some day, when custom clients
-     * can be expected to have merged ContentsInfo. */
-    private static void propagate(ItemInfo inf, List<ItemInfo> buf, ItemInfo.Owner outer) {
-	try {
-	    java.lang.reflect.Method mth = inf.getClass().getMethod("propagate", List.class, ItemInfo.Owner.class);
-	    Utils.invoke(mth, inf, buf, outer);
-	} catch(NoSuchMethodException e) {
-	}
     }
 
     private int lastcontseq;
@@ -361,8 +384,6 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 		    for(ItemInfo inf : ((GItem)ch).info()) {
 			if(inf instanceof ContentsInfo)
 			    ((ContentsInfo)inf).propagate(buf, this);
-			else
-			    propagate(inf, buf, this);
 		    }
 		}
 	    }
@@ -564,15 +585,15 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 	    }
 	}
 
+	public void reqclose() {
+		chstate("hide");
+	}
+
 	public void wdgmsg(Widget sender, String msg, Object... args) {
 		if(msg.equals("take") && this.parent != null && this.parent instanceof StudyInventory && OptWnd.lockStudyReportCheckBox.a) {
 			return;
 		}
-	    if((sender == this) && (msg == "close")) {
-		chstate("hide");
-	    } else {
 		super.wdgmsg(sender, msg, args);
-	    }
 	}
 
 	public void cdestroy(Widget w) {
@@ -735,9 +756,10 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 				}
 				if (feastingWindow != null) {
 					for(Widget wdg : feastingWindow.children()) {
-						if (wdg instanceof Inventory) {
-							if (((Inventory)wdg).isz.equals(3, 3) || ((Inventory)wdg).isz.equals(1, 2)) {
-								for (WItem item : ((Inventory)wdg).wmap.values()) {
+                        Inventory inv = Inventory.fromWidget(wdg);
+						if (inv != null) {
+							if (inv.isz.equals(3, 3) || inv.isz.equals(1, 2)) {
+								for (WItem item : inv.wmap.values()) {
                                     try {
                                         for (ItemInfo ii : item.item.info()) {
                                             if (ii instanceof Wear) {

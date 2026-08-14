@@ -156,25 +156,8 @@ public class WItem extends Widget implements DTarget {
 	}
     }
 
-    private List<ItemInfo> info() {return(item.info());}
-    public final AttrCache<Pipe.Op> rstate = new AttrCache<>(this::info, info -> {
-	    ArrayList<GItem.RStateInfo> ols = new ArrayList<>();
-	    for(ItemInfo inf : info) {
-		if(inf instanceof GItem.RStateInfo)
-		    ols.add((GItem.RStateInfo)inf);
-	    }
-	    if(ols.size() == 0)
-		return(() -> null);
-	    if(ols.size() == 1) {
-		Pipe.Op op = ols.get(0).rstate();
-		return(() -> op);
-	    }
-	    Pipe.Op[] ops = new Pipe.Op[ols.size()];
-	    for(int i = 0; i < ops.length; i++)
-		ops[i] = ols.get(0).rstate();
-	    Pipe.Op cmp = Pipe.Op.compose(ops);
-	    return(() -> cmp);
-	});
+    public List<ItemInfo> info() {return(item.info());}
+    public final AttrCache<Pipe.Op> rstate = new AttrCache<>(this::info, GItem.RStateInfo.combine);
     public AttrCache<GItem.InfoOverlay<?>[]> itemols = new AttrCache<>(this::info, info -> {
 	    ArrayList<GItem.InfoOverlay<?>> buf = new ArrayList<>();
 	    for(ItemInfo inf : info) {
@@ -220,7 +203,7 @@ public class WItem extends Widget implements DTarget {
 		String searchKeyword = InventorySearchWindow.inventorySearchString.toLowerCase();
 		if (searchKeyword.length() > 1) {
 			if (Fuzzy.fuzzyContains(itemName, searchKeyword)) {
-				int fps = GLPanel.Loop.fps > 0 ? GLPanel.Loop.fps : 1;
+				int fps = UILoop.fps > 0 ? UILoop.fps : 1;
 				int colorShiftSpeed = 800/fps;
 				if (searchItemColorShiftUp) {
 					if (searchItemColorValue + colorShiftSpeed <= 255) {
@@ -287,14 +270,7 @@ public class WItem extends Widget implements DTarget {
     }
 
     public boolean mousedown(MouseDownEvent ev) {
-	boolean inv = parent instanceof Inventory;
-
-	if(ev.b == 1){
-
-	}
-
-
-
+	boolean inv = Inventory.fromWidget(parent) != null;
 	if(ev.b == 1) {
 		if (OptWnd.useImprovedInventoryTransferControlsCheckBox.a && ui.modmeta && !ui.modctrl) {
 			if (inv) {
@@ -307,8 +283,6 @@ public class WItem extends Widget implements DTarget {
 			wdgmsg("drop-identical", item, false);
 			return true;
 		}
-
-
 
 	    if(ui.modshift) {
 		int n = ui.modctrl ? -1 : 1;

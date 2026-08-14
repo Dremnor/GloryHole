@@ -475,7 +475,7 @@ public class Fightview extends Widget {
 
 				if(OptWnd.cleaveSoundEnabledCheckbox.a && res.basename().endsWith("cleave")) {
 					try {
-						File file = new File(haven.MainFrame.gameDir + "AlarmSounds/" + OptWnd.cleaveSoundFilename.buf.line() + ".wav");
+						File file = new File(haven.Client.gameDir + "AlarmSounds/" + OptWnd.cleaveSoundFilename.buf.line() + ".wav");
 						if(!file.exists()) {
 							return;
 						}
@@ -483,13 +483,13 @@ public class Fightview extends Widget {
 						AudioFormat tgtFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, 44100, 16, 2,4, 44100, false);
 						AudioInputStream pcmStream = AudioSystem.getAudioInputStream(tgtFormat, in);
 						Audio.CS klippi = new Audio.PCMClip(pcmStream, 2, 2);
-						((Audio.Mixer)Audio.player.stream).add(new Audio.VolAdjust(klippi, OptWnd.cleaveSoundVolumeSlider.val/50.0));
+                        ui.globalSfxPlay(new Audio.VolAdjust(klippi, OptWnd.cleaveSoundVolumeSlider.val/50.0));
 					} catch(Exception e) {
 						e.printStackTrace();
 					}
 				} else if (OptWnd.opkSoundEnabledCheckbox.a &&res.basename().endsWith("oppknock")) {
 					try {
-						File file = new File(haven.MainFrame.gameDir + "AlarmSounds/" + OptWnd.opkSoundFilename.buf.line() + ".wav");
+						File file = new File(haven.Client.gameDir + "AlarmSounds/" + OptWnd.opkSoundFilename.buf.line() + ".wav");
 						if(!file.exists()) {
 							return;
 						}
@@ -497,7 +497,7 @@ public class Fightview extends Widget {
 						AudioFormat tgtFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, 44100, 16, 2,4, 44100, false);
 						AudioInputStream pcmStream = AudioSystem.getAudioInputStream(tgtFormat, in);
 						Audio.CS klippi = new Audio.PCMClip(pcmStream, 2, 2);
-						((Audio.Mixer)Audio.player.stream).add(new Audio.VolAdjust(klippi, OptWnd.opkSoundVolumeSlider.val/50.0));
+                        ui.globalSfxPlay(new Audio.VolAdjust(klippi, OptWnd.opkSoundVolumeSlider.val/50.0));
 					} catch(Exception e) {
 						e.printStackTrace();
 					}
@@ -506,4 +506,45 @@ public class Fightview extends Widget {
 			}
 		}
 	}
+
+    public void targetNearestFoe() {
+        try {
+            Gob closestGob = null;
+            Gob rGob = null;
+            Gob player;
+            synchronized(this.ui.sess.glob.oc) {
+                player = this.ui.sess.glob.oc.getgob(ui.gui.map.plgob);
+            }
+
+            Iterator iter = this.lsrel.iterator();
+
+            while(iter.hasNext()) {
+                Fightview.Relation r = (Fightview.Relation)iter.next();
+                if (r != null) {
+                    synchronized(this.ui.sess.glob.oc) {
+                        rGob = this.ui.sess.glob.oc.getgob(r.gobid);
+                    }
+
+                    if (closestGob == null && rGob != null) {
+                        closestGob = rGob;
+                    }
+
+                    if (closestGob != null && rGob != null) {
+                        double closestDist = (double)player.getc().dist(closestGob.getc());
+                        double rDist = (double)player.getc().dist(rGob.getc());
+                        if (rDist < closestDist) {
+                            closestGob = rGob;
+                        }
+                    }
+                }
+            }
+
+            if (closestGob != null) {
+                this.wdgmsg("bump", new Object[]{(int)closestGob.id});
+            }
+        } catch (NullPointerException npe) {
+            System.out.println(npe.toString());
+        }
+    }
+
 }

@@ -229,6 +229,10 @@ public class Widget {
 	    ch.attached();
     }
 
+    public UI ui() {
+	return(ui);
+    }
+
     private <T extends Widget> T add0(T child) {
 	if((child.ui == null) && (this.ui != null))
 	    ((Widget)child).attach(this.ui);
@@ -514,6 +518,8 @@ public class Widget {
 	    focused.hasfocus = true;
 	    focused.gotfocus();
 	}
+	if(ui != null)
+	    ui.dispatch(this, new GotFocusEvent());
     }
 
     public void dispose() {
@@ -560,6 +566,8 @@ public class Widget {
 	    focused.hasfocus = false;
 	    focused.lostfocus();
 	}
+	if(ui != null)
+	    ui.dispatch(this, new LostFocusEvent());
     }
 
     public void setfocus(Widget w) {
@@ -705,7 +713,7 @@ public class Widget {
 	    if(tt instanceof String) {
 		settip((String)tt);
 	    } else if(tt instanceof Integer) {
-		tooltip = new PaginaTip(ui.sess.getresv(tt));
+		tooltip = new PaginaTip(ui.sess.getresv(tt), (a < args.length) ? Utils.bv(args[a++]) : false);
 	    }
 	} else if(msg == "gk") {
 	    if(args[0] instanceof Integer) {
@@ -886,6 +894,7 @@ public class Widget {
 
     public static class TickEvent extends Event {
 	public final double dt;
+	public boolean visible = true;
 
 	public TickEvent(double dt) {
 	    this.dt = dt;
@@ -897,6 +906,17 @@ public class Widget {
 		dispatch(wdg);
 	    }
 	    return(true);
+	}
+
+	public boolean dispatch(Widget w) {
+	    boolean pv = visible;
+	    try {
+		if(!w.visible)
+		    visible = false;
+		return(super.dispatch(w));
+	    } finally {
+		visible = pv;
+	    }
 	}
 
 	protected boolean shandle(Widget w) {
@@ -1055,14 +1075,17 @@ public class Widget {
 
     public static class MouseWheelEvent extends MouseActionEvent {
 	public final int a;
+	public final double s;
 
-	public MouseWheelEvent(Coord c, int a) {
+	public MouseWheelEvent(Coord c, int a, double s) {
 	    super(c);
 	    this.a = a;
+	    this.s = s;
 	}
 	public MouseWheelEvent(MouseWheelEvent from, Coord c) {
 	    super(from, c);
 	    this.a = from.a;
+	    this.s = from.s;
 	}
 
 	public MouseWheelEvent derive(Coord c) {return(new MouseWheelEvent(this, c));}
@@ -1203,6 +1226,15 @@ public class Widget {
 	}
     }
 
+    public static abstract class FocusChangeEvent extends Event {
+	public boolean propagation(Widget from) {
+	    return(false);
+	}
+    }
+
+    public static class GotFocusEvent extends FocusChangeEvent {}
+    public static class LostFocusEvent extends FocusChangeEvent {}
+
     public static abstract class QueryEvent<R> extends PointerEvent {
 	public final QueryEvent<R> root;
 	public R ret;
@@ -1338,7 +1370,7 @@ public class Widget {
 	    return(true);
 	if(focusctl && focustab) {
 	    Widget f = focused;
-	    if(key_tab.match(ev.awt) && (f != null)) {
+	    if(key_tab.match(ev.awt, KeyMatch.S) && (f != null)) {
 		while(true) {
 		    if((ev.mods & KeyMatch.S) == 0) {
 			Widget n = f.rnext();
@@ -1765,32 +1797,43 @@ public class Widget {
     public static class PaginaTip implements Indir<Tex> {
 	public final String title;
 	public final Indir<Resource> res;
+	public final boolean tiptitle;
 	private Tex rend;
 	private boolean hasrend = false;
 
 	public PaginaTip(Indir<Resource> res, String title) {
 	    this.res = res;
 	    this.title = title;
+	    this.tiptitle = false;
+	}
+
+	public PaginaTip(Indir<Resource> res, boolean tiptitle) {
+	    this.res = res;
+	    this.title = null;
+	    this.tiptitle = tiptitle;
 	}
 
 	public PaginaTip(Indir<Resource> res) {
-	    this(res, null);
+	    this(res, false);
 	}
 
 	public Tex get() {
 	    if(!hasrend) {
 		render: {
 		    try {
-			Resource.Pagina pag = res.get().layer(Resource.pagina);
-			if(pag == null)
-			    break render;
-			String text;
+			Resource res = this.res.get();
+			Resource.Pagina pag = res.layer(Resource.pagina);
+			String text, title;
+			if(tiptitle)
+			    title = res.flayer(Resource.tooltip).t;
+			else
+			    title = this.title;
 			if(title == null) {
-			    if(pag.text.length() == 0)
+			    if((pag == null) || (pag.text.length() == 0))
 				break render;
 			    text = pag.text;
 			} else {
-			    if(pag.text.length() == 0)
+			    if((pag == null) || (pag.text.length() == 0))
 				text = title;
 			    else
 				text = title + "\n\n" + pag.text;

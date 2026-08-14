@@ -36,17 +36,17 @@ import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import java.io.File;
 import java.util.*;
+import java.text.*;
+import java.util.regex.*;
+import haven.iosys.tk.*;
+import java.io.IOException;
+import java.net.URI;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.font.TextAttribute;
 import java.awt.font.TextHitInfo;
 import java.awt.image.BufferedImage;
-import java.text.*;
 import java.text.AttributedCharacterIterator.Attribute;
-import java.net.URI;
-import java.util.regex.*;
-import java.io.IOException;
-import java.awt.datatransfer.*;
 
 public class ChatUI extends Widget {
     public static final RichText.Foundry fnd = new RichText.Foundry(new ChatParser(TextAttribute.FONT, Text.dfont.deriveFont(UI.scale(12f)), TextAttribute.FOREGROUND, Color.BLACK)).aa(true);
@@ -440,7 +440,7 @@ public class ChatUI extends Widget {
 	}
 
 	public boolean mousewheel(MouseWheelEvent ev) {
-	    sb.ch(ev.a * 45);
+	    sb.ch(ev.s * 45);
 	    return(true);
 	}
 
@@ -665,19 +665,18 @@ public class ChatUI extends Widget {
 			buf.append('\n');
 		}
 	    }
-	    Clipboard cl;
-	    if((cl = java.awt.Toolkit.getDefaultToolkit().getSystemSelection()) == null)
-		cl = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
-	    try {
-		final CharPos ownsel = selstart;
-		cl.setContents(new StringSelection(buf.toString()),
-			       new ClipboardOwner() {
-			public void lostOwnership(Clipboard cl, Transferable tr) {
-			    if(selstart == ownsel)
-				selstart = selend = null;
-			}
-		    });
-	    } catch(IllegalStateException e) {}
+	    CharPos ownsel = selstart;
+	    Clipboard.Item<CharSequence> item = new Clipboard.Item<>(Clipboard.Format.TEXT, buf);
+	    Runnable lost = ()-> {
+		if(selstart == ownsel)
+		    selstart = selend = null;
+	    };
+	    /* XXX: Putting on CLIPBOARD should be from eg. C-c, but
+	     * that requires Channel as a whole to accept keyobard
+	     * focus... */
+	    for(Object id : new Object[] {Clipboard.Std.PRIMARY, Clipboard.Std.CLIPBOARD}) {
+		ui.wnd.clipboard(id).put(new Clipboard.Contents(item), lost);
+	    }
 	}
 
 	protected boolean clicked(CharPos pos, int btn) {
@@ -687,11 +686,11 @@ public class ChatUI extends Widget {
 		URI uri = (URI)inf.getAttribute(ChatAttribute.HYPERLINK);
 		if(uri != null) {
 		    try {
-			WebBrowser.sshow(uri.toURL());
+			ui.wnd.toolkit().browse(uri);
 		    } catch(java.net.MalformedURLException e) {
 			getparent(GameUI.class).error("Could not follow link.");
-		    } catch(WebBrowser.BrowserException e) {
-			getparent(GameUI.class).error("Could not launch web browser.");
+		    } catch(IOException e) {
+			getparent(GameUI.class).error("Could not launch web browser: " + e.getMessage());
 		    }
 		}
 		String hs = (String) inf.getAttribute(ChatAttribute.HEARTHSECRET);
@@ -883,7 +882,7 @@ public class ChatUI extends Widget {
 	private final Map<Integer, Color> pc = new HashMap<Integer, Color>();
 	private Map<Integer, Boolean> muted = null;
 	private Integer mutewait = null;
-	static private final File mapPingFile = new File(haven.MainFrame.gameDir + "res/customclient/sfx/mapPing.wav");
+	static private final File mapPingFile = new File(haven.Client.gameDir + "res/customclient/sfx/mapPing.wav");
 
 	public class NamedMessage extends Message {
 	    public final int from;
@@ -1001,88 +1000,189 @@ public class ChatUI extends Widget {
 	    return(name);
 	}
 
-	public boolean processMessage(String msg, long from){
-		if (msg.startsWith("@")) {
-			Pattern highlight = Pattern.compile("^@(-?\\d+)$");
-			Matcher matcher = highlight.matcher(msg);
-			if(matcher.matches()){
-				try {
-					Gob gob = ui.gui.map.glob.oc.getgob(Long.parseLong(matcher.group(1)));
-					if (gob != null) {
-						if (name.equals("Area Chat")) {
-							gob.highlight(OptWnd.areaChatPingColorOptionWidget.currentColor);
-						} else if (name.equals("Party")) {
-							gob.highlight(OptWnd.partyChatPingColorOptionWidget.currentColor);
-						}
-					}
-					return false;
-				} catch (Exception ignored){}
-			}
-			return true;
-		} else if(msg.startsWith("LOC@")) {
-			if (from == -1)
-				return false;
-			Pattern highlight = Pattern.compile("^LOC@(-?\\d+)x(-?\\d+)$");
-			Matcher matcher = highlight.matcher(msg);
-			if(matcher.matches()){
-				try {
-					synchronized (ui.sess.glob.party.memb) {
-						Party.Member pm = ui.sess.glob.party.memb.get(from);
-						Gob player = ui.gui.map.player();
-						if (player != null && pm != null) {
-							Coord2d playerc = player.rc;
-							Coord2d partyc = pm.getc();
-							if (playerc.dist(partyc) < 975*11) {
-								Coord2d playertopartym = partyc.sub(playerc);
-								Coord2d partyoffset = new Coord2d(Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher.group(2)));
-								Coord2d pingc = playerc.add(playertopartym).add(partyoffset);
-								ui.gui.mapfile.view.addSprite(new PingSprite(pingc, pm.col, 4));
-								try {
-									AudioInputStream in = AudioSystem.getAudioInputStream(mapPingFile);
-									AudioFormat tgtFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, 44100, 16, 2,4, 44100, false);
-									AudioInputStream pcmStream = AudioSystem.getAudioInputStream(tgtFormat, in);
-									Audio.CS klippi = new Audio.PCMClip(pcmStream, 2, 2);
-									((Audio.Mixer)Audio.player.stream).add(new Audio.VolAdjust(klippi, 0.7));
-								} catch(UnsupportedAudioFileException e) {
-									e.printStackTrace();
-								} catch(IOException e) {
-									e.printStackTrace();
-								}
-							} else {
-								System.out.println("Party Member pinging map is too far away from you");
-							}
-						} else {
-							System.out.println("Party Member pinging map is not in the same instance as you");
-						}
-					}
+	public boolean processMessage(String msg, long from) {
+		if (msg.startsWith("LPING@")) {
+			return handleLeaderPingMessage(msg, from);
+		}
 
-				} catch (Exception ignored){}
+		if (msg.startsWith("@")) {
+			return handlePingMessage(msg);
+		}
+
+		if (msg.startsWith("LOC@")) {
+			return handleLocationPingMessage(msg, from);
+		}
+
+		if (msg.startsWith("HFMPL@@@")) {
+			handleMusicSyncMessage(msg);
+			return true;
+		}
+
+		if (name.equals("Party")) {
+			if (Party.isTargetMarkerMessage(msg)) {
+				ui.sess.glob.party.handleMarkerMessage(msg);
 				return false;
 			}
-		} else if (msg.startsWith("HFMPL@@@")) {
-			try {
-				final String hfmplayer = msg.substring("HFMPL@@@".length());
-				final String[] hfmargs = hfmplayer.split("\\|");
-				if (hfmargs.length > 2) {
-					ui.gui.error("Cannot understand hfmp synch message");
+			if (Party.isTargetMarkerListMessage(msg)) {
+				ui.sess.glob.party.handleMarkerListMessage(msg);
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private boolean handleLeaderPingMessage(String msg, long from) {
+		Pattern pattern = Pattern.compile("^LPING@(-?\\d+)$");
+		Matcher matcher = pattern.matcher(msg);
+
+		if (!matcher.matches()) {
+			return true;
+		}
+
+		try {
+			long gobid = Long.parseLong(matcher.group(1));
+			Gob gob = ui.gui.map.glob.oc.getgob(gobid);
+
+			if (name.equals("Party")) {
+				boolean senderIsLeader = ui.sess.glob.party.leader != null
+					&& from != -1
+					&& ui.sess.glob.party.leader.gobid == from;
+
+				if (senderIsLeader) {
+					handleLeaderPing(gobid, gob);
+				} else if (gob != null) {
+					gob.highlight(OptWnd.partyChatPingColorOptionWidget.currentColor);
 				}
-				Arrays.stream(hfmargs).forEach(System.out::println);
-				final long timetoplay = Long.parseLong(hfmargs[0]);
-				final String track = hfmargs[1];
-				for (Widget w = ui.gui.lchild; w != null; w = w.prev) {
-					if (w instanceof MusicWnd) {
-						final MusicWnd musicWnd = (MusicWnd)w;
-						if (musicWnd.hafenMidiplayer != null)
-							musicWnd.hafenMidiplayer.synchPlay(timetoplay, track);
+			}
+			return false;
+		} catch (Exception ignored) {
+			return true;
+		}
+	}
+
+	private void handleLeaderPing(long gobid, Gob gob) {
+		if (gob == null || !gob.getres().name.equals("gfx/borka/body")) {
+			return;
+		}
+
+		if (GameUI.leaderTargetPing != -1 && GameUI.leaderTargetPing != gobid) {
+			Gob oldTarget = ui.gui.map.glob.oc.getgob(GameUI.leaderTargetPing);
+			if (oldTarget != null) {
+				oldTarget.removeLeaderPingArrow();
+			}
+		}
+
+		GameUI.leaderTargetPing = gobid;
+		gob.addLeaderPingArrow();
+	}
+
+	private boolean handlePingMessage(String msg) {
+		Pattern pattern = Pattern.compile("^@(-?\\d+)$");
+		Matcher matcher = pattern.matcher(msg);
+
+		if (!matcher.matches()) {
+			return true;
+		}
+
+		try {
+			long gobid = Long.parseLong(matcher.group(1));
+			Gob gob = ui.gui.map.glob.oc.getgob(gobid);
+
+			if (gob != null) {
+				Color pingColor = name.equals("Area Chat")
+					? OptWnd.areaChatPingColorOptionWidget.currentColor
+					: OptWnd.partyChatPingColorOptionWidget.currentColor;
+				gob.highlight(pingColor);
+			}
+			return false;
+		} catch (Exception ignored) {
+			return true;
+		}
+	}
+
+	private boolean handleLocationPingMessage(String msg, long from) {
+		if (from == -1) {
+			return false;
+		}
+
+		Pattern pattern = Pattern.compile("^LOC@(-?\\d+)x(-?\\d+)$");
+		Matcher matcher = pattern.matcher(msg);
+
+		if (!matcher.matches()) {
+			return true;
+		}
+
+		try {
+			synchronized (ui.sess.glob.party.memb) {
+				Party.Member pm = ui.sess.glob.party.memb.get(from);
+				Gob player = ui.gui.map.player();
+
+				if (player == null || pm == null) {
+					System.out.println("Party Member pinging map is not in the same instance as you");
+					return false;
+				}
+
+				Coord2d playerc = player.rc;
+				Coord2d partyc = pm.getc();
+
+				if (playerc.dist(partyc) >= 975 * 11) {
+					System.out.println("Party Member pinging map is too far away from you");
+					return false;
+				}
+
+				int offsetX = Integer.parseInt(matcher.group(1));
+				int offsetY = Integer.parseInt(matcher.group(2));
+				Coord2d playertopartym = partyc.sub(playerc);
+				Coord2d partyoffset = new Coord2d(offsetX, offsetY);
+				Coord2d pingc = playerc.add(playertopartym).add(partyoffset);
+
+				ui.gui.mapfile.view.addSprite(new PingSprite(pingc, pm.col, 4));
+
+				playMapPingSound();
+			}
+		} catch (Exception ignored) {
+		}
+		return false;
+	}
+
+	private void playMapPingSound() {
+		try {
+			AudioInputStream in = AudioSystem.getAudioInputStream(mapPingFile);
+			AudioFormat tgtFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, 44100, 16, 2, 4, 44100, false);
+			AudioInputStream pcmStream = AudioSystem.getAudioInputStream(tgtFormat, in);
+			Audio.CS klippi = new Audio.PCMClip(pcmStream, 2, 2);
+            ui.globalSfxPlay(new Audio.VolAdjust(klippi, 0.7));
+		} catch (UnsupportedAudioFileException | IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	private void handleMusicSyncMessage(String msg) {
+		try {
+			String hfmplayer = msg.substring("HFMPL@@@".length());
+			String[] hfmargs = hfmplayer.split("\\|");
+
+			if (hfmargs.length > 2) {
+				ui.gui.error("Cannot understand hfmp synch message");
+				return;
+			}
+
+			Arrays.stream(hfmargs).forEach(System.out::println);
+
+			long timetoplay = Long.parseLong(hfmargs[0]);
+			String track = hfmargs[1];
+
+			for (Widget w = ui.gui.lchild; w != null; w = w.prev) {
+				if (w instanceof MusicWnd) {
+					MusicWnd musicWnd = (MusicWnd) w;
+					if (musicWnd.hafenMidiplayer != null) {
+						musicWnd.hafenMidiplayer.synchPlay(timetoplay, track);
 					}
 				}
 			}
-			catch (NumberFormatException ignored) {}
-		} else if (name.equals("Party") && Party.isTargetMarkerMessage(msg)) {
-            ui.sess.glob.party.handleMarkerMessage(msg);
-            return false;
-        }
-		return true;
+		} catch (NumberFormatException ignored) {
+		}
 	}
 
     }
@@ -1707,6 +1807,8 @@ public class ChatUI extends Widget {
 	    qgrab.remove();
 	}
 	
+	public UI ui() {return(ui);}
+
 	public void done(ReadLine buf) {
 	    if(!buf.empty())
 		chan.send(buf.line());

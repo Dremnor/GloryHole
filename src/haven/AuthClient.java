@@ -38,6 +38,7 @@ import java.security.SecureRandom;
 import java.math.BigInteger;
 
 public class AuthClient implements Closeable {
+    public static final int DEFPORT = 1871;
     public static final Config.Variable<Boolean> strictcert = Config.Variable.propb("haven.auth-cert-strict", true);
     private static final SslHelper ssl;
     private SocketChannel sk;
@@ -97,14 +98,14 @@ public class AuthClient implements Closeable {
 	public boolean isOpen() {return(bk.isOpen());}
     }
 
-    private void connect(String host, int port, boolean obf) throws IOException {
+    private void connect(NamedSocketAddress srv, boolean obf) throws IOException {
 	boolean fin = false;
-	sk = Utils.connect(host, port);
+	sk = Utils.connect(srv);
 	try {
-	    ssk = new SslChannel(obf ? new Obfuscation(sk) : sk, ssl.engine(host, port));
+	    ssk = new SslChannel(obf ? new Obfuscation(sk) : sk, ssl.engine(srv.host, srv.port));
 	    ssk.handshake();
 	    if(strictcert.get())
-		ssk.checkname(host);
+		ssk.checkname(srv.host);
 	    fin = true;
 	} finally {
 	    if(!fin)
@@ -112,12 +113,12 @@ public class AuthClient implements Closeable {
 	}
     }
 
-    public AuthClient(String host, int port) throws IOException {
+    public AuthClient(NamedSocketAddress srv) throws IOException {
 	try {
-	    connect(host, port, false);
+	    connect(srv, false);
 	} catch(IOException e) {
 	    try {
-		connect(host, port, true);
+		connect(srv, true);
 	    } catch(Throwable t) {
 		t.addSuppressed(e);
 		throw(t);
@@ -193,6 +194,29 @@ public class AuthClient implements Closeable {
 	}
     }
 
+    public List<Map<?, ?>> gethosts() throws IOException {
+	Message rpl = cmd("hosts");
+	String stat = rpl.string();
+	if(stat.equals("ok")) {
+	    List<Map<?, ?>> ret = new ArrayList<>();
+	    for(Object spec : rpl.list())
+		ret.add((Map<?, ?>)spec);
+	    return(ret);
+	} else {
+	    return(Collections.emptyList());
+	}
+    }
+
+    public List<NamedSocketAddress> gethosts(NamedSocketAddress defaults) throws IOException {
+	List<NamedSocketAddress> ret = new ArrayList<>();
+	for(Map<?, ?> rspec : gethosts()) {
+	    Map<Object, Object> spec = Collections.unmodifiableMap(rspec);
+	    ret.add(new NamedSocketAddress(Utils.sv(spec.getOrDefault("host", defaults.host)),
+					   Utils.iv(spec.getOrDefault("port", defaults.port))));
+	}
+	return(ret);
+    }
+
     public static class TokenInfo {
 	public byte[] id = new byte[] {};
 	public String desc = "";
@@ -200,12 +224,12 @@ public class AuthClient implements Closeable {
 	public TokenInfo id(byte[] id) {this.id = id; return(this);}
 	public TokenInfo desc(String desc) {this.desc = desc; return(this);}
 
-	public Object[] encode() {
-	    Object[] ret = {};
+	public Map<String, Object> encode() {
+	    Map<String, Object> ret = new HashMap<>();
 	    if(this.id.length > 0)
-		ret = Utils.extend(ret, new Object[] {new Object[] {"id", this.id}});
+		ret.put("id", this.id);
 	    if(this.desc.length() > 0)
-		ret = Utils.extend(ret, new Object[] {new Object[] {"desc", this.desc}});
+		ret.put("desc", this.desc);
 	    return(ret);
 	}
 
@@ -254,17 +278,22 @@ public class AuthClient implements Closeable {
 	skout.write(buf);
     }
     
-    private void esendmsg(Object... args) throws IOException {
+    private void esendmsg(String cmd, Object... args) throws IOException {
 	MessageBuf buf = new MessageBuf();
-	for(Object arg : args) {
-	    if(arg instanceof String) {
-		buf.addstring((String)arg);
-	    } else if(arg instanceof byte[]) {
-		buf.addbytes((byte[])arg);
-	    } else if(arg instanceof Object[]) {
-		buf.addlist((Object[])arg);
+	buf.addstring(cmd + "*");
+	int a = 0;
+	while(a < args.length) {
+	    Object k = args[a++];
+	    if(k instanceof String) {
+		buf.addstring((String)k);
+		buf.addtto(args[a++]);
+	    } else if(k instanceof Map) {
+		for(Map.Entry<?, ?> ent : ((Map<?, ?>)k).entrySet()) {
+		    buf.addstring((String)ent.getKey());
+		    buf.addtto(ent.getValue());
+		}
 	    } else {
-		throw(new RuntimeException("Illegal argument to esendmsg: " + arg.getClass()));
+		throw(new RuntimeException("Illegal argument to esendmsg: " + k.getClass()));
 	    }
 	}
 	sendmsg(buf);
@@ -288,14 +317,14 @@ public class AuthClient implements Closeable {
 	return(new MessageBuf(buf));
     }
     
-    public Message cmd(Object... args) throws IOException {
-	esendmsg(args);
+    public Message cmd(String cmd, Object... args) throws IOException {
+	esendmsg(cmd, args);
 	return(recvmsg());
     }
-    
+
     public static abstract class Credentials {
-	public abstract String tryauth(AuthClient cl) throws IOException;
-	public abstract String name();
+	public abstract Session.User tryauth(AuthClient cl) throws IOException;
+	public abstract String authname();
 	public void discard() {}
 	
 	public static class AuthException extends RuntimeException {
@@ -386,9 +415,10 @@ public class AuthClient implements Closeable {
 	public final String username;
 	private final byte[] pw;
 	private final Runnable clean;
+	private String authname;
 	
 	public NativeCred(String username, byte[] pw) {
-	    this.username = username;
+	    this.username = this.authname = username;
 	    this.pw = pw;
 	    clean = Finalizer.finalize(this, () -> Arrays.fill(pw, (byte)0));
 	}
@@ -397,8 +427,8 @@ public class AuthClient implements Closeable {
 	    this(username, pw.getBytes(Utils.utf8));
 	}
 	
-	public String name() {
-	    return(username);
+	public String authname() {
+	    return(authname);
 	}
 
 	public static byte[] prehash(byte[] pw, Object[] spec) {
@@ -416,7 +446,7 @@ public class AuthClient implements Closeable {
 	}
 	
 	private byte[] hashpw(AuthClient cl) throws IOException {
-	    Message rpl = cl.cmd("pwdata", username);
+	    Message rpl = cl.cmd("pwdata", "user", username);
 	    String stat = rpl.string();
 	    if(stat.equals("no"))
 		throw(new AuthException(rpl.string()));
@@ -438,12 +468,13 @@ public class AuthClient implements Closeable {
 	    }
 	}
 
-	public String tryauth(AuthClient cl) throws IOException {
-	    Message rpl = cl.cmd("pw", username, hashpw(cl));
+	public Session.User tryauth(AuthClient cl) throws IOException {
+	    Message rpl = cl.cmd("pw", "user", username, "phash", hashpw(cl));
 	    String stat = rpl.string();
 	    if(stat.equals("ok")) {
 		String acct = rpl.string();
-		return(acct);
+		authname = acct;
+		return(new Session.User(acct));
 	    } else if(stat.equals("no")) {
 		String err = rpl.string();
 		throw(new AuthException(err));
@@ -461,24 +492,26 @@ public class AuthClient implements Closeable {
 	public final String acctname;
 	public final byte[] token;
 	private final Runnable clean;
+	private String authname;
 	
 	public TokenCred(String acctname, byte[] token) {
-	    this.acctname = acctname;
+	    this.acctname = this.authname = acctname;
 	    if((this.token = token).length != 32)
 		throw(new IllegalArgumentException("Token must be 32 bytes"));
 	    clean = Finalizer.finalize(this, () -> Arrays.fill(token, (byte)0));
 	}
 	
-	public String name() {
-	    return(acctname);
+	public String authname() {
+	    return(authname);
 	}
 	
-	public String tryauth(AuthClient cl) throws IOException {
-	    Message rpl = cl.cmd("token", acctname, token);
+	public Session.User tryauth(AuthClient cl) throws IOException {
+	    Message rpl = cl.cmd("token", "user", acctname, "token", token);
 	    String stat = rpl.string();
 	    if(stat.equals("ok")) {
 		String acct = rpl.string();
-		return(acct);
+		authname = acct;
+		return(new Session.User(acct));
 	    } else if(stat.equals("no")) {
 		String err = rpl.string();
 		throw(new AuthException(err));
@@ -496,14 +529,14 @@ public class AuthClient implements Closeable {
 	Thread t = new HackThread(new Runnable() {
 		public void run() {
 		    try {
-			AuthClient test = new AuthClient("127.0.0.1", 1871);
+			AuthClient test = new AuthClient(new NamedSocketAddress("localhost", DEFPORT));
 			try {
-			    String acct = new NativeCred(args[0], args[1]).tryauth(test);
+			    Session.User acct = new NativeCred(args[0], args[1]).tryauth(test);
 			    if(acct == null) {
 				System.err.println("failed");
 				return;
 			    }
-			    System.out.println(acct);
+			    System.out.println(acct.name);
 			    System.out.println(Utils.hex.enc(test.getcookie()));
 			} finally {
 			    test.close();

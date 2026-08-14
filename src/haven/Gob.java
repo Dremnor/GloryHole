@@ -59,6 +59,8 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
     int clprio = 0;
     public long id;
     public boolean removed = false;
+    public volatile boolean culled = false;
+    private Collection<RenderTree.Slot> culledSlots = null;
     public final Glob glob;
 	public ConcurrentHashMap<Class<? extends GAttrib>, GAttrib> attr = new ConcurrentHashMap<>(); // ND: Make this ConcurrentHashMap to prevent concurrent modification exceptions. It doesn't seem to affect performance
     public final Collection<Overlay> ols = new ArrayList<Overlay>();
@@ -92,6 +94,7 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 	private Overlay skyboxOverlay;
 	public static Boolean batWingCapeEquipped = false; // ND: Check for Bat Wing Cape
 	public static Boolean nightQueenDefeated = false; // ND: Check for Bat Dungeon Experience (Defeated Bat Queen)
+    public static Boolean caveHermitAcquired = false; // ND: Check for Cave Hermit Credo
 	public String playerGender = "unknown";
 	public Boolean isDeadPlayer = false;
 	public int playerPoseUpdatedCounter = 0;
@@ -101,7 +104,6 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 	private static Future<?> gobDeathFuture;
 	private Overlay gobChaseVector = null;
 	public static final HashSet<Long> alarmPlayed = new HashSet<Long>();
-	private Overlay miningSafeTilesOverlay = null;
 	public Overlay combatFoeCircleOverlay = null;
 	public static Set<Long> permanentHighlightList = new HashSet<>();
 	private GobDamageInfo damage;
@@ -114,12 +116,15 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 	private Overlay archeryRadius;
 	BarrelContentsGobInfo barrelContentsGobInfo;
 	IconSignGobInfo iconSignGobInfo;
+    ProduceSackGobInfo produceSackGobInfo;
 	GobCheeseRackInfo cheeseRackInfo;
 	public boolean combatFoeHighlighted = false;
 	private GobSpeedInfo gobSpeedInfo;
 	public String currentWeapon = "";
     public boolean combatInfoAdded = false;
     private Overlay partyMarkOverlay;
+    private Overlay partyCircleOverlay;
+    public float msRadSize = 0;
 
     public static class Overlay implements RenderTree.Node, Sprite.Owner {
 	public final int id;
@@ -543,6 +548,7 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 	for(GAttrib a : attr.values()){
 	    a.ctick(dt);
 	}
+    try { // ND: Potentially fixes the crashes related to placing cupboards that have a decal on them (and probably other stuff like that)
 	for(Iterator<Overlay> i = ols.iterator(); i.hasNext();) {
 	    Overlay ol = i.next();
 	    if(ol.slots == null) {
@@ -557,6 +563,7 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 		}
 	    }
 	}
+    } catch (ConcurrentModificationException ignored) {}
 	updstate();
 	if(virtual && ols.isEmpty() && (getattr(Drawable.class) == null))
 	    glob.oc.remove(this);
@@ -592,7 +599,30 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 			}
 		}
 	}
+
+	checkPendingLeaderPing();
     }
+
+    private void checkPendingLeaderPing() {
+		if (GameUI.leaderTargetPing != -1 && this.id == GameUI.leaderTargetPing) {
+			try {
+				if (getattr(Drawable.class) != null && getres().name.equals("gfx/borka/body")) {
+					boolean hasArrow = false;
+					synchronized (ols) {
+						for (Overlay ol : ols) {
+							if (ol.spr instanceof haven.sprites.LeaderPingArrowSprite) {
+								hasArrow = true;
+								break;
+							}
+						}
+					}
+					if (!hasArrow) {
+						addLeaderPingArrow();
+					}
+				}
+			} catch (Loading ignored) {}
+		}
+	}
 
     public void gtick(Render g) {
 	Drawable d = getattr(Drawable.class);
@@ -607,6 +637,8 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 
     void removed() {
 	removed = true;
+	culled = false;
+	culledSlots = null;
     }
 
     private void deferred() {
@@ -850,21 +882,11 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 		}
 	}
 	if (a instanceof Homing) {
-		Homing homing = (Homing) a;
-		if (gobChaseVector == null && homing != null) {
-			gobChaseVector = new Overlay(this, new ChaseVectorSprite(this, homing));
+        if (gobChaseVector == null) {
+			gobChaseVector = new Overlay(this, new ChaseVectorSprite(this));
 			synchronized (ols) {
 				addol(gobChaseVector);
 			}
-		} else if (gobChaseVector != null && homing != null) {
-			gobChaseVector.remove();
-			gobChaseVector = new Overlay(this, new ChaseVectorSprite(this, homing));
-			synchronized (ols) {
-				addol(gobChaseVector);
-			}
-		} else if (gobChaseVector != null) {
-			gobChaseVector.remove();
-			gobChaseVector = null;
 		}
 	}
     }
@@ -1254,6 +1276,10 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 				iconSignGobInfo = new IconSignGobInfo(this);
 				setattr(IconSignGobInfo.class, iconSignGobInfo);
 			}
+            if (res.name.startsWith("gfx/terobjs/producesack") && produceSackGobInfo == null) {
+                produceSackGobInfo = new ProduceSackGobInfo(this);
+                setattr(ProduceSackGobInfo.class, produceSackGobInfo);
+            }
 			if (res.name.startsWith("gfx/terobjs/cheeserack") && cheeseRackInfo == null) {
 				cheeseRackInfo = new GobCheeseRackInfo(this);
 				setattr(GobCheeseRackInfo.class, cheeseRackInfo);
@@ -1286,10 +1312,10 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 		updateTroughsRadius();
 		updateBeeSkepRadius();
 		updateMoundBedsRadius();
-		updateMineLadderRadius();
-		updateSupportOverlays();
 		initPermanentHighlightOverlay();
 		HitBoxes.addHitBox(this);
+        updatePartyCircleOverlay();
+        updatePartyHighlightOverlay();
         if (glob.party != null) {
             synchronized (glob.party.targetMarkers) {
                 for (Map.Entry<Party.TargetMark, Long> entry : glob.party.targetMarkers.entrySet()) {
@@ -1306,7 +1332,7 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 		Iterator<String> iter = poses.iterator();
 		while (iter.hasNext()) { // ND: Some animals have stupid names for the knock or dead pose, like "chicken-knock". Doing it this way is easier than manually adding every single one.
 			String s = iter.next();
-			if (s.contains("knock") || s.contains("dead") || s.contains("waterdead") || s.contains("banzai")) {
+			if (s.contains("knock") || s.contains("dead") || s.contains("waterdead") || s.contains("banzai") || s.contains("carried")) {
 				knocked = true;
 				break;
 			} else {
@@ -1334,9 +1360,9 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 			imOnHorseback = (poses.contains("riding-idle"));
 			boolean imOnWater = onWaterAnimations.stream().anyMatch(target -> poses.stream().anyMatch(s -> s.contains(target)));
 			if (poses.contains("spear-ready")) {
-				archeryIndicator(155, !imOnWater);
+				archeryIndicator(160, !imOnWater);
 			} else if (poses.contains("sling-aim")) {
-				archeryIndicator(155, !imOnWater);
+				archeryIndicator(160, !imOnWater);
 			} else if (poses.contains("drawbow")) {
 				for (GAttrib g : this.attr.values()) {
 					if (g instanceof Drawable) {
@@ -1345,9 +1371,9 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 							if (c.comp.cequ.size() > 0) {
 								for (Composited.ED item : c.comp.cequ) {
 									if (item.res.res.get().basename().equals("huntersbow"))
-										archeryIndicator(195, !imOnWater);
+										archeryIndicator(200, !imOnWater);
 									else if (item.res.res.get().basename().equals("rangersbow"))
-										archeryIndicator(252, !imOnWater);
+										archeryIndicator(257, !imOnWater);
 								}
 							}
 						}
@@ -1444,11 +1470,11 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 					long plgobid = glob.sess.ui.gui.map.plgob;
 					if (plgobid != -1 && plgobid != id) {
 						if (isLoftar)
-							setattr(new Buddy(this, -1, "Loftar", Color.WHITE));
+							setattr(new Buddy(this, -1, "Loftar", Color.WHITE, -1));
 						else if ((getattr(Vilmate.class) != null))
-							setattr(new Buddy(this, -1, "Village/Realm Member", Color.WHITE));
+							setattr(new Buddy(this, -1, "Village/Realm Member", Color.WHITE, 0));
 						else {
-							setattr(new Buddy(this, -1, "Unknown", Color.GRAY));
+							setattr(new Buddy(this, -1, "Unknown", Color.GRAY, 0));
 						}
 					}
 				}
@@ -1536,7 +1562,7 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 			} else if (OptWnd.hideStockpilesCheckbox.a && resName.startsWith("gfx/terobjs/stockpile")) {
 				doHide = OptWnd.toggleGobHidingCheckBox.a;
 				doShowHidingBox = true;
-			} else if (OptWnd.hideCropsCheckbox.a && resName.startsWith("gfx/terobjs/plants") && !resName.endsWith("trellis")) {
+			} else if (OptWnd.hideCropsCheckbox.a && resName.startsWith("gfx/terobjs/plants") && !resName.endsWith("trellis") && !resName.endsWith("giantturnip")) {
 				doHide = OptWnd.toggleGobHidingCheckBox.a;
 				doShowHidingBox = false; // ND: You can walk through them anyway, so it doesn't matter. Their resource doesn't have an actual hitbox layer and we'll have an endless lag loop of trying to draw one.
 			} else if (OptWnd.hideTrellisCheckbox.a && resName.endsWith("trellis")) {
@@ -1957,13 +1983,17 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 					setAuraCircleOverlay(OptWnd.showCritterAurasCheckBox.a, OptWnd.genericCritterAuraColorOptionWidget.currentColor);
 				} else if (resourceName.matches(".*(rabbit|bunny)$")) {
 					setAuraCircleOverlay(OptWnd.showCritterAurasCheckBox.a, OptWnd.rabbitAuraColorOptionWidget.currentColor);
-				}
+                } else if (resourceName.matches(".*(woodscorpion)$")) {
+                    setAuraCircleOverlay(OptWnd.showCritterAurasCheckBox.a, OptWnd.dangerousCritterAuraColorOptionWidget.currentColor);
+                }
 			} else if (knocked != null && knocked) {
 				if (Arrays.stream(Config.critterResPaths).anyMatch(resourceName::matches)) {
 					setAuraCircleOverlay(false, OptWnd.genericCritterAuraColorOptionWidget.currentColor);
 				} else if (resourceName.matches(".*(rabbit|bunny)$")) {
 					setAuraCircleOverlay(false, OptWnd.rabbitAuraColorOptionWidget.currentColor);
-				}
+                } else if (resourceName.matches(".*(woodscorpion)$")) {
+                    setAuraCircleOverlay(OptWnd.showCritterAurasCheckBox.a, OptWnd.dangerousCritterAuraColorOptionWidget.currentColor);
+                }
 			} else if (!isComposite) { // ND: For critters that can't have a knocked status, like insects.
 				if (Arrays.stream(Config.critterResPaths).anyMatch(resourceName::matches)) {
 					setAuraCircleOverlay(OptWnd.showCritterAurasCheckBox.a, OptWnd.genericCritterAuraColorOptionWidget.currentColor);
@@ -2019,7 +2049,13 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 						} else {
 							setRadiusOverlay(OptWnd.showDangerousBeastRadiiCheckBox.a, new Color(192, 0, 0, 140), 120F);
 						}
-					} else {
+					} else if (resourceName.endsWith("/troll")) {
+                        if (caveHermitAcquired) {
+                            setRadiusOverlay(false, null, 0f);
+                        } else {
+                            setRadiusOverlay(OptWnd.showDangerousBeastRadiiCheckBox.a, new Color(192, 0, 0, 140), 120F);
+                        }
+                    } else {
 						setRadiusOverlay(OptWnd.showDangerousBeastRadiiCheckBox.a, new Color(192, 0, 0, 140), 120F);
 					}
 				}
@@ -2181,14 +2217,14 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 					}
 					if (poses.contains("knock") || poses.contains("drowned")) {
 						if (!imDead) {
-							File file = new File(haven.MainFrame.gameDir + "res/customclient/sfx/PlayerKnockedOut.wav");
+							File file = new File(haven.Client.gameDir + "res/customclient/sfx/PlayerKnockedOut.wav");
 							if (file.exists()) {
 								try {
 									AudioInputStream in = AudioSystem.getAudioInputStream(file);
 									AudioFormat tgtFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, 44100, 16, 2, 4, 44100, false);
 									AudioInputStream pcmStream = AudioSystem.getAudioInputStream(tgtFormat, in);
 									Audio.CS klippi = new Audio.PCMClip(pcmStream, 2, 2);
-									((Audio.Mixer) Audio.player.stream).add(new Audio.VolAdjust(klippi, 1));
+                                    glob.sess.ui.globalSfxPlay(new Audio.VolAdjust(klippi, 1));
 								} catch (UnsupportedAudioFileException e) {
 									e.printStackTrace();
 								} catch (IOException e) {
@@ -2199,9 +2235,9 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 							isDeadPlayer = true;
 							File file = null;
 							if (playerGender.equals("male")) {
-								file = new File(haven.MainFrame.gameDir + "res/customclient/sfx/MalePlayerKilled.wav");
+								file = new File(haven.Client.gameDir + "res/customclient/sfx/MalePlayerKilled.wav");
 							} else if (playerGender.equals("female")) {
-								file = new File(haven.MainFrame.gameDir + "res/customclient/sfx/FemalePlayerKilled.wav");
+								file = new File(haven.Client.gameDir + "res/customclient/sfx/FemalePlayerKilled.wav");
 							}
 							if (file != null && file.exists() && somethingJustDied) {
 								try {
@@ -2209,7 +2245,7 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 									AudioFormat tgtFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, 44100, 16, 2, 4, 44100, false);
 									AudioInputStream pcmStream = AudioSystem.getAudioInputStream(tgtFormat, in);
 									Audio.CS klippi = new Audio.PCMClip(pcmStream, 2, 2);
-									((Audio.Mixer) Audio.player.stream).add(new Audio.VolAdjust(klippi, 1));
+                                    glob.sess.ui.globalSfxPlay(new Audio.VolAdjust(klippi, 1));
 								} catch (UnsupportedAudioFileException e) {
 									e.printStackTrace();
 								} catch (IOException e) {
@@ -2257,6 +2293,25 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 		h.start();
 	}
 
+	public void addLeaderPingArrow() {
+		removeLeaderPingArrow();
+		addol(new haven.sprites.LeaderPingArrowSprite(this));
+	}
+
+	public void removeLeaderPingArrow() {
+		synchronized (ols) {
+			List<Overlay> toRemove = new ArrayList<>();
+			for (Overlay ol : ols) {
+				if (ol.spr instanceof haven.sprites.LeaderPingArrowSprite) {
+					toRemove.add(ol);
+				}
+			}
+			for (Overlay ol : toRemove) {
+				ol.remove();
+			}
+		}
+	}
+
 	public Set<String> getPoses() {
 		Set<String> poses = new HashSet<>();
 		if (this.isComposite) {
@@ -2282,17 +2337,21 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 
 	public void playPlayerAlarm() {
 		if (!alarmPlayed.contains(id)){
-			Composite c = getattr(Composite.class);
-			if (c == null || c.comp.cmod.isEmpty()) return;
 			if (getres() != null) {
 				if (isMannequin != null && !isMannequin && isSkeleton != null && !isSkeleton){
 					if (getres().name.equals("gfx/borka/body")) {
+                        Composite c = getattr(Composite.class);
+                        if (c == null || c.comp.cmod.isEmpty()) return;
+                        if (playerGender.equals("unknown")) {
+                            updPose(c.poses); // ND: Gotta force this here again, because it doesn't update on a fresh login
+                            return;
+                        }
 						Buddy buddyInfo = getattr(Buddy.class);
 						boolean isVillager = getattr(Vilmate.class) != null;
 						haven.res.ui.obj.buddy_n.Named namedInfo = getattr(haven.res.ui.obj.buddy_n.Named.class);
 						if (!isMe) {
-							if (buddyInfo != null) {
-								if ((buddyInfo.customName != null && buddyInfo.customName.equals("Unknown"))) {
+							if (buddyInfo != null && buddyInfo.rgrp != -1) {
+								if ((buddyInfo.customName != null && buddyInfo.customName.equals("Unknown")) || buddyInfo.rgrp == 0 && !isVillager) {
 									playPlayerColorAlarm(OptWnd.whitePlayerAlarmEnabledCheckbox.a, OptWnd.whitePlayerAlarmFilename.buf.line(), OptWnd.whitePlayerAlarmVolumeSlider.val);
 								} else if ((buddyInfo.customName != null && buddyInfo.customName.equals("Village/Realm Member") && isVillager)) {
 									playPlayerColorAlarm(OptWnd.whiteVillageOrRealmPlayerAlarmEnabledCheckbox.a, OptWnd.whiteVillageOrRealmPlayerAlarmFilename.buf.line(), OptWnd.whiteVillageOrRealmPlayerAlarmVolumeSlider.val);
@@ -2325,61 +2384,19 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 	private void playPlayerColorAlarm(Boolean enabled, String line, int val) {
 		if (enabled) {
 			try {
-				File file = new File(haven.MainFrame.gameDir + "AlarmSounds/" + line + ".wav");
+				File file = new File(haven.Client.gameDir + "AlarmSounds/" + line + ".wav");
 				if (file.exists()) {
 					AudioInputStream in = AudioSystem.getAudioInputStream(file);
 					AudioFormat tgtFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, 44100, 16, 2, 4, 44100, false);
 					AudioInputStream pcmStream = AudioSystem.getAudioInputStream(tgtFormat, in);
 					Audio.CS klippi = new Audio.PCMClip(pcmStream, 2, 2);
-					((Audio.Mixer) Audio.player.stream).add(new Audio.VolAdjust(klippi, val / 50.0));
+                    glob.sess.ui.globalSfxPlay(new Audio.VolAdjust(klippi, val / 50.0));
 					alarmPlayed.add(id);
 				}
 			} catch (Exception ignored) {
 			}
 		}
 	}
-
-	public void updateMineLadderRadius() {
-		if (getres() != null) {
-			String resourceName = getres().name;
-			if (resourceName.equals("gfx/terobjs/ladder")){
-				setRadiusOverlay(OptWnd.showMineSupportRadiiCheckBox.a, new Color(0, 121, 12, 128), 100F);
-			}
-		}
-	}
-
-	public void updateSupportOverlays(){
-		if (getres() != null) {
-			if (getres().name.equals("gfx/terobjs/map/naturalminesupport") ){
-				setMiningSafeTilesOverlay(OptWnd.showMineSupportSafeTilesCheckBox.a, (float) a, 0);
-			} else if (getres().name.equals("gfx/terobjs/ladder") || getres().name.equals("gfx/terobjs/minesupport") ){
-				setMiningSafeTilesOverlay(OptWnd.showMineSupportSafeTilesCheckBox.a, (float) a, 1);
-			} else if (getres().name.equals("gfx/terobjs/column")){
-				setMiningSafeTilesOverlay(OptWnd.showMineSupportSafeTilesCheckBox.a, (float) a, 2);
-			} else if (getres().name.equals("gfx/terobjs/minebeam")){
-				setMiningSafeTilesOverlay(OptWnd.showMineSupportSafeTilesCheckBox.a, (float) a, 3);
-			}
-		}
-	}
-
-	public void setMiningSafeTilesOverlay(boolean enabled, float angle, int size) {
-		if (enabled) {
-			List<Overlay> olsSnapshot = new ArrayList<>(ols);
-			for (Overlay ol : olsSnapshot) {
-				if (ol.spr instanceof MiningSafeTilesSprite) {
-					return;
-				}
-			}
-			miningSafeTilesOverlay = new Overlay(this, new MiningSafeTilesSprite(this, angle, size));
-			synchronized (ols) {
-				addol(miningSafeTilesOverlay);
-			}
-		} else if (miningSafeTilesOverlay != null) {
-			removeOl(miningSafeTilesOverlay);
-			miningSafeTilesOverlay = null;
-		}
-	}
-
 
 	public void setCombatFoeCircleOverlay() {
 		if (OptWnd.showCirclesUnderCombatFoesCheckBox.a && combatFoeCircleOverlay == null) {
@@ -2464,7 +2481,7 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 			}
 		}
 		Buddy buddyInfo = getattr(Buddy.class);
-		if (buddyInfo != null) {
+		if (buddyInfo != null && buddyInfo.rgrp != -1) {
 			if (buddyInfo.customName != null && buddyInfo.customName.equals("Unknown")) return false;
 			if (buddyInfo.rgrp == 1 && OptWnd.excludeGreenBuddyFromAggroCheckBox.a) return true;
 			if (buddyInfo.rgrp == 2 && OptWnd.excludeRedBuddyFromAggroCheckBox.a) return true;
@@ -2535,6 +2552,7 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 		if (barrelContentsGobInfo != null) barrelContentsGobInfo.clear();
 		if (cheeseRackInfo != null) cheeseRackInfo.clear();
 		if (iconSignGobInfo != null) iconSignGobInfo.clear();
+        if (produceSackGobInfo != null) produceSackGobInfo.clear();
 		setGobSearchOverlay();
 	}
 
@@ -2640,5 +2658,86 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
         }
     }
 
+    public void updatePartyCircleOverlay() {
+        if (OptWnd.showCirclesUnderPartyMembersCheckBox.a) {
+            if (partyCircleOverlay != null) {
+                removeOl(partyCircleOverlay);
+                partyCircleOverlay = null;
+            }
+            Party party = glob.party;
+            if (party != null && party.memb.size() > 1) {
+                synchronized (party.memb) {
+                    for (Party.Member m : party.memb.values()) {
+                        if (m.gobid == id) {
+                            if (m == party.leader) {
+                                partyCircleOverlay = new Overlay(this, new PartyCircleSprite(this, PartyCircleSprite.LEADER_OL_COLOR));
+                                break;
+                            } else if (isMe != null && isMe) {
+                                partyCircleOverlay = new Overlay(this, new PartyCircleSprite(this, PartyCircleSprite.YOURSELF_OL_COLOR));
+                                break;
+                            } else {
+                                partyCircleOverlay = new Overlay(this, new PartyCircleSprite(this, PartyCircleSprite.MEMBER_OL_COLOR));
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (partyCircleOverlay != null) {
+                    synchronized (ols) {
+                        addol(partyCircleOverlay);
+                    }
+                }
+            }
+        } else if (partyCircleOverlay != null) {
+            removeOl(partyCircleOverlay);
+            partyCircleOverlay = null;
+        }
+    }
+
+    public void updatePartyHighlightOverlay() {
+        if (OptWnd.highlightPartyMembersCheckBox.a) {
+            if (getattr(GobPartyHighlight.class) != null) {
+                delattr(GobPartyHighlight.class);
+            }
+            Party party = glob.party;
+            if (party != null && party.memb.size() > 1) {
+                synchronized (party.memb) {
+                    for (Party.Member m : party.memb.values()) {
+                        if (m.gobid == id) {
+                            if (m == party.leader) {
+                                setattr(GobPartyHighlight.class, new GobPartyHighlight(this, GobPartyHighlight.LEADER_OL_COLOR));
+                                break;
+                            } else if (isMe != null && isMe) {
+                                setattr(GobPartyHighlight.class, new GobPartyHighlight(this, GobPartyHighlight.YOURSELF_OL_COLOR));
+                                break;
+                            } else {
+                                setattr(GobPartyHighlight.class, new GobPartyHighlight(this, GobPartyHighlight.MEMBER_OL_COLOR));
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (getattr(GobPartyHighlight.class) != null) {
+            delattr(GobPartyHighlight.class);
+        }
+    }
+
+	public void refreshGobHealthAttribute() {
+		GobHealth gobHealth = getattr(GobHealth.class);
+		if (gobHealth != null) {
+			setattr(new GobHealth(this, gobHealth.hp));
+		}
+	}
+
+	public void updateLeaderPingArrow() {
+		Party party = glob.party;
+		if (party == null || party.memb.size() <= 1) {
+			removeLeaderPingArrow();
+			if (GameUI.leaderTargetPing == this.id) {
+				GameUI.leaderTargetPing = -1;
+			}
+		}
+	}
 
 }

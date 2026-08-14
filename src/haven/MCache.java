@@ -42,9 +42,8 @@ public class MCache implements MapSource {
     public static final Coord cutsz = Coord.of(25, 25);
     public static final Coord cutn = cmaps.div(cutsz);
     private final Object setmon = new Object();
-    private Resource.Spec[] nsets = new Resource.Spec[16];
     @SuppressWarnings("unchecked")
-    private Reference<Resource>[] sets = new Reference[16];
+    private Indir<Resource>[] sets = new Indir[16];
     @SuppressWarnings("unchecked")
     private Reference<Tileset>[] csets = new Reference[16];
     @SuppressWarnings("unchecked")
@@ -53,8 +52,8 @@ public class MCache implements MapSource {
     Map<Coord, Request> req = new HashMap<Coord, Request>();
     Map<Coord, Grid> grids = new HashMap<Coord, Grid>();
     public Session sess;
-    Set<Overlay> ols = new HashSet<Overlay>();
-    public int olseq = 0, chseq = 0;
+    Set<LocalOverlay> ols = new HashSet<>();
+    public volatile int olseq = 0, chseq = 0;
     Map<Integer, Defrag> fragbufs = new TreeMap<Integer, Defrag>();
 
     public static class LoadingMap extends Loading {
@@ -232,35 +231,86 @@ public class MCache implements MapSource {
 	}
     }
 
-    public class Overlay {
-	public Area a;
-	private OverlayInfo id;
+    public static interface LocalOverlay {
+	public OverlayInfo id();
+	public void fill(Area a, boolean[] buf);
+	public default boolean filter(Area a) {return(false);}
+	public default void tick() {}
+    }
 
-	public Overlay(Area a, OverlayInfo id) {
-	    this.a = a;
-	    this.id = id;
-	    ols.add(this);
+    private Collection<LocalOverlay> localoverlaycopy() {
+	synchronized(this) {
+	    return(new ArrayList<>(ols));
+	}
+    }
+
+    public void add(LocalOverlay ol) {
+	synchronized(this) {
+	    ols.add(ol);
 	    olseq++;
 	}
+    }
 
-	public void destroy() {
-	    ols.remove(this);
+    public void remove(LocalOverlay ol) {
+	synchronized(this) {
+	    ols.remove(ol);
 	    olseq++;
+	}
+    }
+
+    public class RectOverlay implements LocalOverlay {
+	public final OverlayInfo id;
+	public Area a;
+
+	public RectOverlay(OverlayInfo id, Area a) {
+	    this.id = id;
+	    this.a = a;
+	}
+
+	public OverlayInfo id() {return(id);}
+
+	public boolean filter(Area b) {
+	    return(b.overlap(a) == null);
+	}
+
+	public void fill(Area b, boolean[] buf) {
+	    Area ol = a.overlap(b);
+	    if(ol != null) {
+		for(Coord lc : ol)
+		    buf[b.ri(lc)] = true;
+	    }
 	}
 
 	public void update(Area a) {
 	    if(!a.equals(this.a)) {
-		olseq++;
 		this.a = a;
+		olseq++;
+	    }
+	}
+    }
+
+    @Deprecated
+    public class Overlay extends RectOverlay {
+	public Overlay(Area a, OverlayInfo id) {
+	    super(id, a);
+	    synchronized(MCache.this) {
+		ols.add(this);
+		olseq++;
+	    }
+	}
+
+	public void destroy() {
+	    synchronized(MCache.this) {
+		ols.remove(this);
+		olseq++;
 	    }
 	}
     }
 
     private void cktileid(int id) {
-	if(id >= nsets.length) {
+	if(id >= sets.length) {
 	    synchronized(setmon) {
-		if(id >= nsets.length) {
-		    nsets = Utils.extend(nsets, Integer.highestOneBit(id) * 2);
+		if(id >= sets.length) {
 		    sets  = Utils.extend(sets,  Integer.highestOneBit(id) * 2);
 		    csets = Utils.extend(csets, Integer.highestOneBit(id) * 2);
 		    tiles = Utils.extend(tiles, Integer.highestOneBit(id) * 2);
@@ -429,6 +479,17 @@ public class MCache implements MapSource {
 	}
 
 	public void getol(OverlayInfo id, Area a, boolean[] buf) {
+	    if (id instanceof GroundSupportOverlay) {
+	        GroundSupportOverlay tto = (GroundSupportOverlay) id;
+	        int o = 0;
+
+	        for (Coord c : a) {
+	            Coord worldTile = c.add(this.ul);
+	            buf[o++] = tto.isTileHighlighted(worldTile);
+	        }
+	        return;
+	    }
+
 	    for(int i = 0; i < ols.length; i++) {
 		if(ols[i].get().layer(ResOverlay.class) == id) {
 		    int o = 0;
@@ -493,7 +554,7 @@ public class MCache implements MapSource {
 	    int[] ids = new int[16];
 	    int nids = 0;
 	    {
-		boolean[] uids = new boolean[nsets.length];
+		boolean[] uids = new boolean[sets.length];
 		int i = area.ul.x + (area.ul.y * cmaps.x);
 		for(int y = 0; y < cutsz.y; y++, i += (cmaps.x - cutsz.x)) {
 		    for(int x = 0; x < cutsz.x; x++, i++) {
@@ -561,7 +622,7 @@ public class MCache implements MapSource {
 			}
 			GameUI.backgroundSong = "";
 		}
-	
+
 	public RenderTree.Node getolcut(OverlayInfo id, Coord cc) {
 	    int nseq = MCache.this.olseq;
 	    if(this.olseq != nseq) {
@@ -651,11 +712,11 @@ public class MCache implements MapSource {
 		String resnm = buf.string();
 		int resver = buf.uint16();
 		cktileid(tileid);
-		nsets[tileid] = new Resource.Spec(Resource.remote(), resnm, resver);
+		sets[tileid] = new Resource.Spec(Resource.remote(), resnm, resver);
 	    }
 	    for(int i = 0; i < tiles.length; i++) {
 		tiles[i] = buf.uint8();
-		if(nsets[tiles[i]] == null)
+		if(sets[tiles[i]] == null)
 		    throw(new Message.FormatError(String.format("Got undefined tile: " + tiles[i])));
 	    }
 	}
@@ -675,12 +736,36 @@ public class MCache implements MapSource {
 		String resnm = buf.string();
 		int resver = buf.uint16();
 		cktileid(tileid);
-		nsets[tileid] = new Resource.Spec(Resource.remote(), resnm, resver);
+		sets[tileid] = new Resource.Spec(Resource.remote(), resnm, resver);
 	    }
 	    boolean lg = maxid >= 256;
 	    for(int i = 0; i < tiles.length; i++) {
 		tiles[i] = tileids[lg ? buf.uint16() : buf.uint8()];
-		if(nsets[tiles[i]] == null)
+		if(sets[tiles[i]] == null)
+		    throw(new Message.FormatError(String.format("Got undefined tile: " + tiles[i])));
+	    }
+	}
+
+	private void filltiles3(Message buf) {
+	    int[] tileids = new int[1];
+	    int maxid = 0;
+	    while(true) {
+		int encid = buf.uint16();
+		if(encid == 65535)
+		    break;
+		maxid = Math.max(maxid, encid);
+		int tileid = buf.uint16();
+		if(encid >= tileids.length)
+		    tileids = Utils.extend(tileids, Integer.highestOneBit(encid) * 2);
+		tileids[encid] = tileid;
+		Indir<Resource> res = sess.getres(buf.uint16());
+		cktileid(tileid);
+		sets[tileid] = res;
+	    }
+	    boolean lg = maxid >= 256;
+	    for(int i = 0; i < tiles.length; i++) {
+		tiles[i] = tileids[lg ? buf.uint16() : buf.uint8()];
+		if(sets[tiles[i]] == null)
 		    throw(new Message.FormatError(String.format("Got undefined tile: " + tiles[i])));
 	    }
 	}
@@ -793,6 +878,9 @@ public class MCache implements MapSource {
 		case "t2":
 		    filltiles2(buf);
 		    break;
+		case "t3":
+		    filltiles3(buf);
+		    break;
 		case "h":
 		    fillz(buf);
 		    break;
@@ -834,6 +922,8 @@ public class MCache implements MapSource {
 	}
 	for(Grid g : copy)
 	    g.tick(dt);
+	for(LocalOverlay lol : localoverlaycopy())
+	    lol.tick();
     }
 
     public void gtick(Render g) {
@@ -978,10 +1068,16 @@ public class MCache implements MapSource {
 		    ret.add(id);
 	    }
 	}
-	for(Overlay lol : ols) {
-	    if((lol.a.overlap(a) != null) && !ret.contains(lol.id))
-		ret.add(lol.id);
+	for(LocalOverlay lol : localoverlaycopy()) {
+	    if(!lol.filter(a) && !ret.contains(lol.id()))
+		ret.add(lol.id());
 	}
+
+	GroundSupportOverlay tto = GroundSupportOverlay.getInstance();
+	if (tto.getTileCount() > 0 && !ret.contains(tto)) {
+	    ret.add(tto);
+	}
+
 	return(ret);
     }
 
@@ -1000,14 +1096,10 @@ public class MCache implements MapSource {
 		    buf[a.ri(tc)] = gbuf[(tc.x - gt.ul.x) + ((tc.y - gt.ul.y) * cmaps.x)];
 	    }
 	}
-	for(Overlay lol : ols) {
-	    if(lol.id != id)
+	for(LocalOverlay lol : localoverlaycopy()) {
+	    if(lol.id() != id)
 		continue;
-	    Area la = lol.a.overlap(a);
-	    if(la != null) {
-		for(Coord lc : la)
-		    buf[a.ri(lc)] = true;
-	    }
+	    lol.fill(a, buf);
 	}
     }
     
@@ -1079,25 +1171,11 @@ public class MCache implements MapSource {
 	}
     }
 
-    public Resource.Spec tilesetn(int i) {
-	Resource.Spec[] nsets = this.nsets;
-	if(i >= nsets.length)
-	    return(null);
-	return(nsets[i]);
-    }
-
     public Resource tilesetr(int i) {
-	Reference<Resource>[] sets = this.sets;
-	if(i >= sets.length)
+	Indir<Resource>[] sets = this.sets;
+	if(sets[i] == null)
 	    return(null);
-	Resource res = (sets[i] == null) ? null : sets[i].get();
-	if(res == null) {
-	    Resource.Spec[] nsets = this.nsets;
-	    if(nsets[i] == null)
-		return(null);
-	    sets[i] = new SoftReference<>(res = nsets[i].get());
-	}
-	return(res);
+	return(sets[i].get());
     }
 
     public Tileset tileset(int i) {

@@ -8,7 +8,7 @@ import java.awt.Color;
 import static java.lang.Math.*;
 
 /* >wdg: Pointer */
-@haven.FromResource(name = "ui/locptr", version = 22)
+@haven.FromResource(name = "ui/locptr", version = 23)
 public class Pointer extends Widget {
     public static final BaseColor col = new BaseColor(new Color(241, 227, 157, 255));
     public Indir<Resource> icon;
@@ -19,17 +19,19 @@ public class Pointer extends Widget {
 	private Text.Line tt = null;
 	private int dist;
 
+	private Tex cachedDistText = null;
+	private int cachedDist = -1;
+
     public Pointer(Indir<Resource> icon) {
 	super(Coord.z);
 	this.icon = icon;
     }
 
     public static Widget mkwidget(UI ui, Object... args) {
-	int iconid = (Integer)args[0];
-	Indir<Resource> icon = (iconid < 0) ? null : ui.sess.getres(iconid);
+	Indir<Resource> icon = ui.sess.getresv(args[0]);
 	return(new Pointer(icon));
     }
-	
+
     public void presize() {
 	resize(parent.sz);
     }
@@ -76,7 +78,17 @@ public class Pointer extends Widget {
 		if(licon == null)
 		    licon = icon.get().layer(Resource.imgc).tex();
 		g.aimage(licon, sc.add(ad), 0.5, 0.5);
-		g.aimage(Text.renderstroked(dist + "", Color.WHITE, Color.BLACK, Text.num12boldFnd).tex(), sc.add(ad), 0.5, 0.5);
+		if (cachedDist != dist) {
+		    if (cachedDistText != null) {
+		        cachedDistText.dispose();
+		    }
+		    cachedDistText = Text.renderstroked(dist + "", Color.WHITE, Color.BLACK, Text.num12boldFnd).tex();
+		    cachedDist = dist;
+		}
+
+		if (cachedDistText != null) {
+		    g.aimage(cachedDistText, sc.add(ad), 0.5, 0.5);
+		}
 	    } catch(Loading l) {
 	    }
 	}
@@ -130,10 +142,9 @@ public class Pointer extends Widget {
 	    if(args[1] == null)
 		gobid = -1;
 	    else
-		gobid = Utils.uint32((Integer)args[1]);
+		gobid = Utils.uiv(args[1]);
 	} else if(name == "icon") {
-	    int iconid = (Integer)args[0];
-	    Indir<Resource> icon = (iconid < 0) ? null : ui.sess.getres(iconid);
+	    Indir<Resource> icon = ui.sess.getresv(args[0]);
 	    this.icon = icon;
 	    licon = null;
 	} else {
@@ -166,5 +177,14 @@ public class Pointer extends Widget {
 		return (tooltip);
 	}
 	return(null);
+    }
+
+    @Override
+    public void dispose() {
+	if (cachedDistText != null) {
+	    cachedDistText.dispose();
+	    cachedDistText = null;
+	}
+	super.dispose();
     }
 }
