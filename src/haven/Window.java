@@ -26,20 +26,27 @@
 
 package haven;
 
+import haven.automated.InventorySorter;
+import haven.automated.StackAllItems;
+import haven.automated.UnstackAllItems;
+import haven.automated.mapper.MappingClient;
 import haven.render.*;
-import java.util.function.*;
+
 import java.awt.Color;
 import java.awt.image.BufferedImage;
+import java.util.Arrays;
+import java.util.regex.Matcher;
+
 import static haven.PUtils.*;
 
 public class Window extends Widget {
     public static final Pipe.Op bgblend = FragColor.blend.nil;
     public static final Pipe.Op cblend  = FragColor.blend(new BlendMode(BlendMode.Function.ADD, BlendMode.Factor.SRC_ALPHA, BlendMode.Factor.INV_SRC_ALPHA,
 									BlendMode.Function.ADD, BlendMode.Factor.ONE, BlendMode.Factor.INV_SRC_ALPHA));
-    public static Tex bg = (!Utils.getprefb("simplifiedUITheme", false) ? Resource.loadtex("gfx/hud/wnd/lg/bg") : Resource.loadtex("customclient/simplifiedUI/wnd/bg"));
+    public static final Tex bg = Resource.loadtex("gfx/hud/wnd/lg/bg");
     public static final Tex bgl = Resource.loadtex("gfx/hud/wnd/lg/bgl");
     public static final Tex bgr = Resource.loadtex("gfx/hud/wnd/lg/bgr");
-    public static Tex cl =  (!Utils.getprefb("simplifiedUITheme", false) ? Resource.loadtex("gfx/hud/wnd/lg/cl") : Resource.loadtex("customclient/simplifiedUI/wnd/cl"));
+    public static final Tex cl = Resource.loadtex("gfx/hud/wnd/lg/cl");
     public static final TexI cm = new TexI(Resource.loadsimg("gfx/hud/wnd/lg/cm"));
     public static final Tex cr = Resource.loadtex("gfx/hud/wnd/lg/cr");
     public static final Tex tm = Resource.loadtex("gfx/hud/wnd/lg/tm");
@@ -49,20 +56,18 @@ public class Window extends Widget {
     public static final Tex rm = Resource.loadtex("gfx/hud/wnd/lg/rm");
     public static final Tex bl = Resource.loadtex("gfx/hud/wnd/lg/bl");
     public static final Tex bm = Resource.loadtex("gfx/hud/wnd/lg/bm");
-    public static Tex br = (!Utils.getprefb("simplifiedUITheme", false) ? Resource.loadtex("gfx/hud/wnd/lg/br") : Resource.loadtex("customclient/simplifiedUI/wnd/br"));
+    public static final Tex br = Resource.loadtex("gfx/hud/wnd/lg/br");
     public static final Tex sizer = Resource.loadtex("gfx/hud/wnd/sizer");
     public static final Coord tlm = UI.scale(18, 30);
     public static final Coord brm = UI.scale(13, 22);
-	public static final Coord cpo = UI.rscale(27, 13); // ND: This is the location of the window title text
+	public static final Coord cpo = UI.rscale(27, 6); // ND: This is the location of the window title text
     public static final int capo = 7, capio = 2;
-    public static final Coord dlmrgn = UI.scale(24, 18);
-    public static final Coord dsmrgn = UI.scale(12, 12);
+    public static final Coord dlmrgn = UI.scale(10, 10); // ND: Margin set for LARGE windows, between the content and window edge
+    public static final Coord dsmrgn = UI.scale(4, 4); // ND: margin set for SMALL windows, between the content and window edge
     public static final BufferedImage ctex = Resource.loadsimg("gfx/hud/fonttex");
     public static final BufferedImage ctexUnfocused = Resource.loadsimg("gfx/hud/fonttexUnfocused");
-    public static final Text.Furnace cf = Text.Imager.of(new PUtils.TexFurn(new Text.Foundry(Text.fraktur, 15).aa(true), ctex),
-    in -> rasterimg(blurmask2(in.img.getRaster(), UI.rscale(0.75), UI.rscale(1.0), Color.BLACK)));
-    public static final Text.Furnace ncf = Text.Imager.of(new PUtils.TexFurn(new Text.Foundry(Text.fraktur, 15).aa(true), ctexUnfocused),
-	in -> rasterimg(blurmask2(in.img.getRaster(), UI.rscale(0.75), UI.rscale(1.0), Color.BLACK)));
+    @Deprecated public static final Text.Furnace cf = DefaultDeco.cf;
+    @Deprecated public static final Text.Furnace ncf = DefaultDeco.ncf;
     public static final IBox wbox = new IBox.Scaled("gfx/hud/wnd", "tl", "tr", "bl", "br", "extvl", "extvr", "extht", "exthb") {
 	    final Coord co = UI.scale(3, 3), bo = UI.scale(2, 2);
 
@@ -77,6 +82,22 @@ public class Window extends Widget {
 	Resource.loadsimg("gfx/hud/wnd/lg/cbtnu"),
 	Resource.loadsimg("gfx/hud/wnd/lg/cbtnd"),
 	Resource.loadsimg("gfx/hud/wnd/lg/cbtnh")};
+    private static final BufferedImage[] stackbtni = new BufferedImage[] {
+    Resource.loadsimg("gfx/hud/wnd/lg/stackbtnu"),
+    Resource.loadsimg("gfx/hud/wnd/lg/stackbtnd"),
+    Resource.loadsimg("gfx/hud/wnd/lg/stackbtnh")};
+    private static final BufferedImage[] unstackbtni = new BufferedImage[] {
+    Resource.loadsimg("gfx/hud/wnd/lg/unstackbtnu"),
+    Resource.loadsimg("gfx/hud/wnd/lg/unstackbtnd"),
+    Resource.loadsimg("gfx/hud/wnd/lg/unstackbtnh")};
+    private static final BufferedImage[] sortbtni = new BufferedImage[] {
+    Resource.loadsimg("gfx/hud/wnd/lg/sortbtnu"),
+    Resource.loadsimg("gfx/hud/wnd/lg/sortbtnd"),
+    Resource.loadsimg("gfx/hud/wnd/lg/sortbtnh")};
+	private static final BufferedImage[] extlistbtni = new BufferedImage[] {
+    Resource.loadsimg("gfx/hud/wnd/lg/qlistbtnu"),
+    Resource.loadsimg("gfx/hud/wnd/lg/qlistbtnd"),
+    Resource.loadsimg("gfx/hud/wnd/lg/qlistbtnh")};
     public Deco deco;
     public String cap;
     public TexRaw gbuf = null;
@@ -132,10 +153,22 @@ public class Window extends Widget {
                  this.c = loc;
          }
      }
+
+    if (deco instanceof DefaultDeco) {
+        ((DefaultDeco) deco).refreshInventoryButtons();
+    }
+
     }
 
     public void chcap(String cap) {
 	this.cap = cap;
+	attachLocalExtInventory(getchild(Inventory.class));
+	if(deco instanceof DefaultDeco)
+	    ((DefaultDeco) deco).refreshInventoryButtons();
+    }
+
+    private boolean shouldHaveInventoryButtons() {
+	return cap != null && Arrays.stream(Config.EXCLUDED_INVENTORY_WINDOWS).noneMatch(cap::equals);
     }
 
     public void chdeco(Deco deco) {
@@ -185,8 +218,13 @@ public class Window extends Widget {
     }
 
     public static class DefaultDeco extends DragDeco {
+	public static final Text.Forge cf =  new PUtils.BlurFurn(new PUtils.TexFurn(new Text.Foundry(Text.fraktur, 15).aa(true), ctex),
+								   UI.rscale(0.75), UI.rscale(1.0), Color.BLACK);
+	public static final Text.Forge ncf = new PUtils.BlurFurn(new PUtils.TexFurn(new Text.Foundry(Text.fraktur, 15).aa(true), ctexUnfocused),
+								   UI.rscale(0.75), UI.rscale(1.0), Color.BLACK);
 	public final boolean lg;
 	public final IButton cbtn;
+    public IButton extlistbtn, stackbtn, unstackbtn, sortbtn;
 	public boolean dragsize, cfocus;
 	public Area aa, ca;
 	public Coord cptl = Coord.z, cpsz = Coord.z;
@@ -213,7 +251,17 @@ public class Window extends Widget {
 	    resize(wsz);
 	    ca = Area.sized(tlm, csz);
 	    aa = Area.sized(ca.ul.add(mrgn), asz);
-		cbtn.c = Coord.of(sz.x - cbtn.sz.x - UI.scale(9), - UI.scale(3)); // ND: UI Window close button location
+//		int extra = inventoryExtraWidth();
+		int anchor = sz.x;
+		cbtn.c = Coord.of(anchor - cbtn.sz.x - UI.scale(9), -UI.scale(10));
+		if (extlistbtn != null)
+			extlistbtn.c = Coord.of(anchor - cbtn.sz.x - UI.scale(29), -UI.scale(10));
+        if (sortbtn != null)
+            sortbtn.c = Coord.of(anchor - cbtn.sz.x - UI.scale(49), - UI.scale(10));
+        if (unstackbtn != null)
+            unstackbtn.c = Coord.of(anchor - cbtn.sz.x - UI.scale(69), -UI.scale(10));
+        if (stackbtn != null)
+            stackbtn.c = Coord.of(anchor - cbtn.sz.x - UI.scale(88), -UI.scale(10));
 		cpsz = Coord.of((int)(wsz.x*0.95), cm.sz().y).sub(cptl); // ND: changed this to make the window top bar fully draggable WHEN RESIZED (for instance, buddy window)
 	}
 
@@ -234,13 +282,11 @@ public class Window extends Widget {
 	    }
 	    g.defstate();
 	    bgc.x = ca.ul.x;
-		if(!OptWnd.simplifiedUIThemeCheckBox.a){
-	    for(bgc.y = ca.ul.y; bgc.y < ca.br.y; bgc.y += bgl.sz().y)
-		g.image(bgl, bgc, ca.ul, ca.br);
-	    bgc.x = ca.br.x - bgr.sz().x;
-	    for(bgc.y = ca.ul.y; bgc.y < ca.br.y; bgc.y += bgr.sz().y)
-		g.image(bgr, bgc, ca.ul, ca.br);
-		}
+//	    for(bgc.y = ca.ul.y; bgc.y < ca.br.y; bgc.y += bgl.sz().y)
+//		g.image(bgl, bgc, ca.ul, ca.br);
+//	    bgc.x = ca.br.x - bgr.sz().x;
+//	    for(bgc.y = ca.ul.y; bgc.y < ca.br.y; bgc.y += bgr.sz().y)
+//		g.image(bgr, bgc, ca.ul, ca.br);
 	}
 
 	protected void drawframe(GOut g) {
@@ -331,6 +377,134 @@ public class Window extends Widget {
 	    Coord cpc = c.sub(cptl);
 	    return(ca.contains(c) || (c.isect(cptl, cpsz) && (cm.back.getRaster().getSample(cpc.x % cm.back.getWidth(), cpc.y, 3) >= 128)));
 	}
+
+	private Inventory findInventory() {
+		if (!(parent instanceof Window))
+			return null;
+
+		Window wnd = (Window) parent;
+		for (Widget w = wnd.child; w != null; w = w.next) {
+			if (w == wnd.deco)
+				continue;
+            Inventory inv = Inventory.fromWidget(w);
+            if (inv != null)
+                return inv;
+		}
+		return null;
+	}
+
+	private ExtInventory findExtInventory() {
+		if (!(parent instanceof Window))
+			return null;
+
+		Window wnd = (Window) parent;
+		for (Widget w = wnd.child; w != null; w = w.next) {
+			if (w == wnd.deco)
+				continue;
+			if (w instanceof ExtInventory)
+				return (ExtInventory) w;
+		}
+		return null;
+	}
+
+	private int inventoryExtraWidth() {
+		if (!(parent instanceof Window))
+			return 0;
+
+		Window wnd = (Window) parent;
+		for (Widget w = wnd.child; w != null; w = w.next) {
+			if (w == wnd.deco)
+				continue;
+			if (w instanceof ExtInventory) {
+				ExtInventory ext = (ExtInventory) w;
+				return Math.max(0, ext.sz.x - ext.inv.sz.x);
+			}
+		}
+		return 0;
+	}
+
+	private boolean shouldShowInventoryButtons() {
+		return (parent instanceof Window) && ((Window) parent).shouldHaveInventoryButtons();
+	}
+
+	private void refreshInventoryButtons() {
+		boolean visible = shouldShowInventoryButtons();
+		boolean hasInventory = findInventory() != null;
+		boolean hasExtInventory = findExtInventory() != null;
+
+		if (stackbtn != null)
+			stackbtn.visible = visible && hasInventory;
+		if (unstackbtn != null)
+			unstackbtn.visible = visible && hasInventory;
+		if (sortbtn != null)
+			sortbtn.visible = visible && hasInventory;
+		if (extlistbtn != null)
+			extlistbtn.visible = visible && hasExtInventory;
+	}
+
+	public void addExtListBtn() {
+		if (extlistbtn != null)
+			return;
+
+		extlistbtn = add(new IButton(extlistbtni[0], extlistbtni[1], extlistbtni[2])).action(() -> {
+			ExtInventory ext = findExtInventory();
+			if (ext != null) {
+				ext.togglePanel();
+			}
+		});
+		extlistbtn.settip("Extended View");
+		extlistbtn.visible = false;
+		refreshInventoryButtons();
+	}
+
+    public void addStackBtn() {
+		if (stackbtn != null)
+			return;
+
+		stackbtn = add(new IButton(stackbtni[0], stackbtni[1], stackbtni[2])).action(() -> {
+			Inventory inv = findInventory();
+			if (inv != null) {
+				new Thread(new StackAllItems(this.ui.gui, inv)).start();
+			}
+		});
+		stackbtn.settip("Stack All");
+		stackbtn.visible = false;
+		refreshInventoryButtons();
+	}
+
+    public void addSortBtn() {
+		if (sortbtn != null)
+			return;
+
+        sortbtn = add(new IButton(sortbtni[0], sortbtni[1], sortbtni[2])).action(() -> {
+            for (Widget wdg = this; wdg != null; wdg = wdg.next) {
+                Inventory inv = Inventory.fromWidget(wdg);
+                if (inv != null) {
+                    InventorySorter.sort(inv);
+                    break;
+                }
+            }
+        });
+        sortbtn.settip("Sort All");
+        sortbtn.visible = false;
+        refreshInventoryButtons();
+    }
+
+    public void addUnstackBtn() {
+		if (unstackbtn != null)
+			return;
+
+		unstackbtn = add(new IButton(unstackbtni[0], unstackbtni[1], unstackbtni[2])).action(() -> {
+			Inventory inv = findInventory();
+			if (inv != null) {
+				new Thread(new UnstackAllItems(this.ui.gui, inv)).start();
+			}
+		});
+		unstackbtn.settip("Unstack All");
+		unstackbtn.visible = false;
+		refreshInventoryButtons();
+	}
+
     }
 
     public void cdraw(GOut g) {
@@ -497,8 +671,13 @@ public class Window extends Widget {
 	return(super.keydown(ev));
     }
 
+    private Runnable reqclose = () -> wdgmsg("close");
+    public Window reqclose(Runnable reqclose) {
+	this.reqclose = reqclose;
+	return(this);
+    }
     public void reqclose() {
-	wdgmsg("close");
+	reqclose.run();
     }
 
     public static interface Animation {
@@ -681,63 +860,130 @@ public class Window extends Widget {
 	return(FadeAnim.trans);
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
 	Window wnd = new Window(new Coord(300, 200), "Inventory", true);
-	new haven.rs.DrawBuffer(haven.rs.Context.getdefault().env(), new Coord(512, 512))
+	boolean[] done = {false};
+	new haven.rs.DrawBuffer(haven.iosys.tk.Acephal.instance().env(), new Coord(512, 512))
 	    .draw(g -> {
 		    wnd.draw(g);
-		    g.getimage(img -> Debug.dumpimage(img, args[0]));
+		    g.getimage(img -> {
+			Debug.dumpimage(img, args[0]);
+			synchronized(done) {
+			    done[0] = true;
+			    done.notifyAll();
+			}
+		    });
 	    });
+	synchronized(done) {
+	    while(!done[0])
+		done.wait();
+	}
     }
 
+    public static final Coord guiTopLeftCornerDiff = UI.scale(15, 8); // ND: You'd think gui.c starts in the top left corner of the screen. You'd be wrong. I don't even know how.
+    public static final Coord windowBottomRightCornerDiff = UI.scale(10, 19); // ND: I guess the window size Coord says it's larger than what it actually is, so I gotta correct this too.
+    public static final Coord dragResizeDiff = UI.scale(51, 72); // ND: I don't even know how to explain this one. Just trust the code.
+
 	public void preventDraggingOutside() { // ND: This code is just straight up spaghetti, I know.
-		if (ui != null && ui.gui != null) {
-			if (this.csz().x > 800 || this.csz().y > 500 || !OptWnd.snapWindowsBackInsideCheckBox.a) {
-				if (this.large) {
-					if (this.deco == null) { // ND: This is for windows that don't have the outer decoration (like compact map window)
-						if (this.c.x < 0 - (int)(this.csz().x/1.333)) this.c.x = 0 - (int)(this.csz().x/1.333);
-						if (this.c.y < 0 - (int)(this.csz().y/1.333)) this.c.y = 0 - (int)(this.csz().y/1.333);
-						if (this.c.x > (ui.gui.sz.x - (int)(this.csz().x*0.25))) this.c.x = ui.gui.sz.x - (int)(this.csz().x*0.25);
-						if (this.c.y > (ui.gui.sz.y - (int)(this.csz().y*0.25))) this.c.y = ui.gui.sz.y - (int)(this.csz().y*0.25);
-					} else {
-						if (this.c.x < -dsmrgn.x - (int)(this.csz().x/1.333)) this.c.x = -dsmrgn.x - (int)(this.csz().x/1.333);
-						if (this.c.y < -dsmrgn.y - (int)(this.csz().y/1.333)) this.c.y = -dsmrgn.y - (int)(this.csz().y/1.333);
-						if (this.c.x > (ui.gui.sz.x - (int)(this.csz().x*0.25) - (dlmrgn.x+dsmrgn.x) * 2)) this.c.x = ui.gui.sz.x - (int)(this.csz().x*0.25) - (dlmrgn.x+dsmrgn.x) * 2 ;
-						if (this.c.y > (ui.gui.sz.y - (int)(this.csz().y*0.25) - (dlmrgn.y+dsmrgn.y) * 2) - dsmrgn.x) this.c.y = ui.gui.sz.y - (int)(this.csz().y*0.25) - (dlmrgn.y+dsmrgn.y) * 2 - dsmrgn.y;
-					}
-				} else {
-					if (this.c.x < -dsmrgn.x - (int)(this.csz().x/1.333)) this.c.x = -dsmrgn.x - (int)(this.csz().x/1.333);
-					if (this.c.y < -dsmrgn.y - (int)(this.csz().y/1.333)) this.c.y = -dsmrgn.y - (int)(this.csz().y/1.333);
-					if (this.c.x > (ui.gui.sz.x - (int)(this.csz().x*0.25) - dlmrgn.x * 2)) this.c.x = ui.gui.sz.x - (int)(this.csz().x*0.25) - dlmrgn.x * 2;
-					if (this.c.y > (ui.gui.sz.y - (int)(this.csz().y*0.25) - dlmrgn.y * 2 - brm.y)) this.c.y = ui.gui.sz.y - (int)(this.csz().y*0.25) - dlmrgn.y * 2 - brm.y;
-				}
-			} else {
-				if (this.large) {
-					if (this.deco == null) { // ND: This is for windows that don't have the outer decoration (like compact map window)
-						if (this.c.x < 0) this.c.x = 0;
-						if (this.c.y < 0) this.c.y = 0;
-						if (this.c.x > (ui.gui.sz.x - this.csz().x)) this.c.x = ui.gui.sz.x - this.csz().x;
-						if (this.c.y > (ui.gui.sz.y - this.csz().y)) this.c.y = ui.gui.sz.y - this.csz().y;
-					} else {
-						if (this.c.x < -dsmrgn.x) this.c.x = -dsmrgn.x;
-						if (this.c.y < -dsmrgn.y) this.c.y = -dsmrgn.y;
-						if (this.c.x > (ui.gui.sz.x - this.csz().x - (dlmrgn.x+dsmrgn.x) * 2)) this.c.x = ui.gui.sz.x - this.csz().x - (dlmrgn.x+dsmrgn.x) * 2 ;
-						if (this.c.y > (ui.gui.sz.y - this.csz().y - (dlmrgn.y+dsmrgn.y) * 2) - dsmrgn.x) this.c.y = ui.gui.sz.y - this.csz().y - (dlmrgn.y+dsmrgn.y) * 2 - dsmrgn.y;
-					}
-				} else {
-					if (this.c.x < -dsmrgn.x) this.c.x = -dsmrgn.x;
-					if (this.c.y < -dsmrgn.y) this.c.y = -dsmrgn.y;
-					if (this.c.x > (ui.gui.sz.x - this.csz().x - dlmrgn.x * 2)) this.c.x = ui.gui.sz.x - this.csz().x - dlmrgn.x * 2;
-					if (this.c.y > (ui.gui.sz.y - this.csz().y - dlmrgn.y * 2 - brm.y)) this.c.y = ui.gui.sz.y - this.csz().y - dlmrgn.y * 2 - brm.y;
-				}
-			}
-		}
+        if (ui == null || ui.gui == null) {
+            return;
+        }
+        Coord guiSize = ui.gui.sz;
+        Coord windowSize = this.sz;
+        if (windowSize.x > 800 || windowSize.y > 500 || !OptWnd.snapWindowsBackInsideCheckBox.a) {
+            if (this.c.x < - guiTopLeftCornerDiff.x - (int)(windowSize.x * 0.70)) this.c.x = - guiTopLeftCornerDiff.x - (int)(windowSize.x * 0.70);
+            if (this.c.y < - guiTopLeftCornerDiff.y - (int)(windowSize.y * 0.70)) this.c.y = - guiTopLeftCornerDiff.y - (int)(windowSize.y * 0.70);
+            if (this.c.x > (guiSize.x - (int)(windowSize.x * 0.30) + windowBottomRightCornerDiff.x)) this.c.x = guiSize.x - (int)(windowSize.x * 0.30) + windowBottomRightCornerDiff.x;
+            if (this.c.y > (guiSize.y - (int)(windowSize.y * 0.30) + windowBottomRightCornerDiff.y)) this.c.y = guiSize.y - (int)(windowSize.y * 0.30) + windowBottomRightCornerDiff.y;
+        } else {
+            if (this.c.x < - guiTopLeftCornerDiff.x) this.c.x = - guiTopLeftCornerDiff.x;
+            if (this.c.y < - guiTopLeftCornerDiff.y) this.c.y = - guiTopLeftCornerDiff.y;
+            if (this.c.x > (guiSize.x - windowSize.x + windowBottomRightCornerDiff.x)) this.c.x = guiSize.x - windowSize.x + windowBottomRightCornerDiff.x;
+            if (this.c.y > (guiSize.y - windowSize.y + windowBottomRightCornerDiff.y)) this.c.y = guiSize.y - windowSize.y + windowBottomRightCornerDiff.y;
+        }
 	}
+
+    public void preventResizingOutside() {
+        if (ui == null || ui.gui == null) {
+            return;
+        }
+        Coord guiSize = ui.gui.sz;
+        Coord windowSize = this.sz;
+        // ND: This prevents us from resizing it larger than the game window size
+        if(windowSize.x > guiSize.x - (dragResizeDiff.x - guiTopLeftCornerDiff.x - windowBottomRightCornerDiff.x)) {this.resize(guiSize.x - (dragResizeDiff.x - guiTopLeftCornerDiff.x - windowBottomRightCornerDiff.x), windowSize.y - dragResizeDiff.y); windowSize = this.sz;}
+        if(windowSize.y > guiSize.y - (dragResizeDiff.y - guiTopLeftCornerDiff.y - windowBottomRightCornerDiff.y)) {this.resize(windowSize.x - dragResizeDiff.x, guiSize.y - (dragResizeDiff.y - guiTopLeftCornerDiff.y - windowBottomRightCornerDiff.y)); windowSize = this.sz;}
+    }
 
     @Override
     public void dispose() {
         super.dispose();
         if (this.cap != null)
             Utils.setprefc("wndc-" + this.cap, this.c);
+    }
+
+    @Override
+    public <T extends Widget> T add(T child) {
+        super.add(child);
+        enhanceWidgets(child);
+        return(child);
+    }
+
+	private boolean shouldAttachLocalExtInventory(Inventory inv) {
+		if (inv == null || getchild(ExtInventory.class) != null || cap == null)
+			return false;
+		if (Inventory.PLAYER_INVENTORY_NAMES.contains(cap))
+			return false;
+		return shouldHaveInventoryButtons();
+	}
+
+	private boolean attachLocalExtInventory(Inventory inv) {
+		if (!shouldAttachLocalExtInventory(inv))
+			return false;
+
+		Coord invc = new Coord(inv.c);
+		inv.unlink();
+		childseq++;
+
+		add(new ExtInventory(inv, ExtInventory.TransferMode.LOCAL), invc);
+		pack();
+		return true;
+	}
+
+    private <T extends Widget> void enhanceWidgets(T child) {
+        try {
+            if (child instanceof Inventory && attachLocalExtInventory((Inventory) child))
+                return;
+
+            if (child instanceof Inventory || child instanceof ExtInventory) {
+                if (deco instanceof DefaultDeco) {
+					try {
+						((DefaultDeco) deco).addStackBtn();
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+					try {
+						((DefaultDeco) deco).addUnstackBtn();
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+                    try {
+                        ((DefaultDeco) deco).addSortBtn();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+					if (child instanceof ExtInventory) {
+						try {
+							((DefaultDeco) deco).addExtListBtn();
+						} catch (Exception e) {
+							e.printStackTrace();
+						}
+					}
+					((DefaultDeco) deco).refreshInventoryButtons();
+
+				}
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

@@ -50,12 +50,16 @@ public class CollisionBox extends SlottedNode implements Rendered {
 
 	public void updateState() {
 		this.state = SOLID_HOLLOW;
-		if (gob.getres() != null && gob.getres().name.equals("gfx/terobjs/cupboard")) {
-			model = getModel(gob);
-			if (OptWnd.flatCupboardsCheckBox.a)
-				this.state = Pipe.Op.compose(SOLID_HOLLOW, Location.rot(new Coord3f(0, 1, 0), 4.712f), Location.scale(1.615f, 1, 1), Location.xlate(new Coord3f(5.45f, 0, 4.7f)));
-			else
-				this.state = SOLID_HOLLOW;
+		if (gob.getres() != null) {
+            if (gob.getres().name.equals("gfx/terobjs/cupboard")) {
+                model = getModel(gob);
+                if (OptWnd.flatCupboardsCheckBox.a)
+                    this.state = Pipe.Op.compose(SOLID_HOLLOW, Location.rot(new Coord3f(0, 1, 0), 4.712f), Location.scale(1.615f, 1, 1), Location.xlate(new Coord3f(5.45f, 0, 4.7f)));
+                else
+                    this.state = SOLID_HOLLOW;
+            } else if (gob.getres().name.equals("gfx/terobjs/stockpile-hide")){
+                this.state = Pipe.Op.compose(SOLID_HOLLOW, Location.scale(2f, 2f, 2f));
+            }
 		}
 		if(model != null && slots != null) {
 			try {
@@ -265,6 +269,7 @@ public class CollisionBox extends SlottedNode implements Rendered {
 	private static Resource getResource(Gob gob) {
 		Resource res = gob.getres();
 		if(res == null) {throw new Loading();}
+        res = fix(res);
 		Collection<RenderLink.Res> links = res.layers(RenderLink.Res.class);
 		for (RenderLink.Res link : links) {
 			if(link.l instanceof RenderLink.MeshMat) {
@@ -274,4 +279,13 @@ public class CollisionBox extends SlottedNode implements Rendered {
 		}
 		return res;
 	}
+
+    // TODO: ND: Need to change the other hardcoded collision boxes to be set like this
+    public static Resource fix(Resource res) {
+        if(res.name.startsWith("gfx/terobjs/producesack")) {
+            return Resource.remote().loadwait("gfx/terobjs/producesack");
+        }
+        return res;
+    }
+
 }

@@ -145,7 +145,7 @@ public class FightWnd extends Widget {
 	    }
 	    Resource.Pagina pag = res.get().layer(Resource.pagina);
 	    if(pag != null)
-		l.add(new ItemInfo.Pagina(this, pag.text));
+		l.add(new ItemInfo.Pagina(this, resdoc(pag.getres(), pag.text)));
 	    return(l.render());
 	}
     }
@@ -720,7 +720,7 @@ public class FightWnd extends Widget {
 	actlist = add(new Actions(UI.scale(296, 208)), UI.scale(new Coord(325, 43)).add(wbox.btloff()));
 	Frame.around(this, Collections.singletonList(actlist));
 
-	acttypes = add(new ActionTypes(this::actionTypeSelected), actlist.pos("ul").adds(75,-28));
+	acttypes = add(new ActionTypes(this::actionTypeSelected), actlist.pos("ul").adds(75,-29));
 	acttypes.setSelectedColor(new Color(100, 100, 100, 128));
 	acttypes.select(0);
 
@@ -834,7 +834,7 @@ public class FightWnd extends Widget {
 	if(nm == "avail") {
 	    List<Action> acts = new ArrayList<Action>();
 	    int a = 0;
-	    while(true) {
+	    while(args[a] != null) {
 		int resid = Utils.iv(args[a++]);
 		if(resid < 0)
 		    break;

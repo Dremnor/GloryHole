@@ -45,6 +45,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
     private static Coord gsz = new Coord(6, 4);
     public final Set<Pagina> paginae = new HashSet<Pagina>();
     public Pagina cur;
+    public int pagseq = 0;
     private final Map<Object, Pagina> pmap = new CacheMap<>(CacheMap.RefType.WEAK);
     private Pagina dragging;
     private Collection<PagButton> curbtns = Collections.emptyList();
@@ -287,6 +288,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 		Resource.Pagina pg = res.layer(Resource.pagina);
 		if(pg != null)
 		    info.add(new ItemInfo.Pagina(this, pg.text));
+		info.add(new ItemInfo.ResourceName(this, res.name));
 	    }
 	    return(info);
 	}
@@ -312,10 +314,13 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 		tt += " [$b{$col[255,128,0]{" + key.longname() + "}}]";
 	    BufferedImage ret = PUtils.strokeImg(PUtils.strokeImg(ttfnd.render(tt, UI.scale(300)).img));
 	    if(withpg) {
-		List<ItemInfo> info = info();
+		List<ItemInfo> info = new ArrayList<>(info());
 		info.removeIf(el -> el instanceof ItemInfo.Name);
-		if(!info.isEmpty())
-		    ret = ItemInfo.catimgs(0, ret, ItemInfo.longtip(info));
+		if(!info.isEmpty()) {
+		    BufferedImage longtip = ItemInfo.longtip(info);
+		    if(longtip != null)
+			ret = ItemInfo.catimgs(0, ret, longtip);
+		}
 	    }
 	    return(ret);
 	}
@@ -661,10 +666,10 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 		    if((fl & 2) != 0)
 			pag = paginafor(id = args[a++], null);
 		    else
-			id = (pag = paginafor(ui.sess.getres((Integer)args[a++], -2))).res;
+			id = (pag = paginafor(ui.sess.getres(Utils.iv(args[a++]), -2))).res;
 		    if((fl & 1) != 0) {
 			if((fl & 2) != 0) {
-			    Indir<Resource> res = ui.sess.getres((Integer)args[a++], -2);
+			    Indir<Resource> res = ui.sess.getres(Utils.iv(args[a++]), -2);
 			    if(pag == null) {
 				pag = paginafor(id, res);
 			    } else if(pag.res != res) {
@@ -691,6 +696,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 			paginae.remove(pag);
 		    }
 		}
+		pagseq++;
 		updlayout();
 	    }
 	} else {
@@ -760,7 +766,6 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 		makeLocal("customclient/menugrid/Toggles/BeeSkepsRadii");
 		makeLocal("customclient/menugrid/Toggles/TroughsRadii");
 		makeLocal("customclient/menugrid/Toggles/MoundBedsRadii");
-		makeLocal("customclient/menugrid/Toggles/MineSupportRadii");
 		makeLocal("customclient/menugrid/Toggles/MineSupportSafeTiles");
 		makeLocal("customclient/menugrid/Toggles/MineSweeper");
 		makeLocal("customclient/menugrid/Toggles/PathfinderWalking");
@@ -776,7 +781,6 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 		makeLocal("customclient/menugrid/Bots/OceanScoutBot");
 		makeLocal("customclient/menugrid/Bots/FishingBot");
 		makeLocal("customclient/menugrid/Bots/TarKilnEmptierBot");
-		makeLocal("customclient/menugrid/Bots/TurnipBot");
 		makeLocal("customclient/menugrid/Bots/CellarDiggingBot");
 		makeLocal("customclient/menugrid/Bots/CleanupBot");
 		makeLocal("customclient/menugrid/Bots/GrubGrubBot");
@@ -859,10 +863,8 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 				OptWnd.showFoodTroughsRadiiCheckBox.set(!OptWnd.showFoodTroughsRadiiCheckBox.a);
 			} else if (ad[2].equals("MoundBedsRadii")) {
 				OptWnd.showMoundBedsRadiiCheckBox.set(!OptWnd.showMoundBedsRadiiCheckBox.a);
-			} else if (ad[2].equals("MineSupportRadii")) {
-				OptWnd.showMineSupportRadiiCheckBox.set(!OptWnd.showMineSupportRadiiCheckBox.a);
 			} else if (ad[2].equals("MineSupportSafeTiles")) {
-				OptWnd.showMineSupportSafeTilesCheckBox.set(!OptWnd.showMineSupportSafeTilesCheckBox.a);
+				OptWnd.showMineSupportCoverageCheckBox.set(!OptWnd.showMineSupportCoverageCheckBox.a);
 			} else if (ad[2].equals("MineSweeper")) {
 				OptWnd.enableMineSweeperCheckBox.set(!OptWnd.enableMineSweeperCheckBox.a);
 			} else if (ad[2].equals("ClearAllCombatDamage")) {
@@ -926,20 +928,6 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 						gui.fishingThread = null;
 					}
 				}
-			} else if (ad[2].equals("TurnipBot")) {
-				if (gui.turnipBot == null && gui.turnipThread == null) {
-					gui.turnipBot = new TurnipBot(gui);
-					gui.add(gui.turnipBot, Utils.getprefc("wndc-turnipBotWindow", new Coord(gui.sz.x/2 - gui.turnipBot.sz.x/2, gui.sz.y/2 - gui.turnipBot.sz.y/2 - 200)));
-					gui.turnipThread = new Thread(gui.turnipBot, "TurnipBot");
-					gui.turnipThread.start();
-				} else {
-					if (gui.turnipBot != null) {
-						gui.turnipBot.stop();
-						gui.turnipBot.reqdestroy();
-						gui.turnipBot = null;
-						gui.turnipThread = null;
-					}
-				}
 			} else if (ad[2].equals("CleanupBot")) {
 				if (gui.cleanupBot == null && gui.cleanupThread == null) {
 					gui.cleanupBot = new CleanupBot(gui);
@@ -948,6 +936,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 					gui.cleanupThread.start();
 				} else {
 					if (gui.cleanupBot != null) {
+                        gui.cleanupBot.stop = true;
 						gui.cleanupBot.stop();
 						gui.cleanupBot.reqdestroy();
 						gui.cleanupBot = null;

@@ -65,9 +65,17 @@ public interface MapSource {
 		}
 		BufferedImage tex = tileimg(m, texes, t);
 		int rgb = 0;
-		if(tex != null)
+		if(tex != null) {
 		    rgb = tex.getRGB(Utils.floormod(c.x + a.ul.x, tex.getWidth()),
 				     Utils.floormod(c.y + a.ul.y, tex.getHeight()));
+		    Tileset ts = m.tileset(t);
+		    if(ts != null) {
+			Resource r = ts.getres();
+			if(r != null) {
+			    rgb = SimplifiedMapColors.applyColor(r.name, rgb);
+			}
+		    }
+		}
 		buf.setRGB(c.x, c.y, rgb);
 	    }
 	}
@@ -98,11 +106,13 @@ public interface MapSource {
 	for(c.y = 0; c.y < sz.y; c.y++) {
 	    for(c.x = 0; c.x < sz.x; c.x++) {
 		int t = m.gettile(a.ul.add(c));
-		if((m.gettile(a.ul.add(c).add(-1, 0)) > t) ||
-		   (m.gettile(a.ul.add(c).add( 1, 0)) > t) ||
-		   (m.gettile(a.ul.add(c).add(0, -1)) > t) ||
-		   (m.gettile(a.ul.add(c).add(0,  1)) > t))
-		    buf.setRGB(c.x, c.y, Color.BLACK.getRGB());
+		if(!OptWnd.removeMapTileBordersCheckBox.a) {
+		    if((m.gettile(a.ul.add(c).add(-1, 0)) > t) ||
+		       (m.gettile(a.ul.add(c).add( 1, 0)) > t) ||
+		       (m.gettile(a.ul.add(c).add(0, -1)) > t) ||
+		       (m.gettile(a.ul.add(c).add(0,  1)) > t))
+				buf.setRGB(c.x, c.y, Color.BLACK.getRGB());
+		}
 	    }
 	}
 	return(buf);

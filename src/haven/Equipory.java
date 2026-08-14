@@ -106,28 +106,6 @@ public class Equipory extends Widget implements DTarget {
 	public static CheckBox autoEquipBunnySlippersPlateBootsCheckBox;
 	boolean checkForLeeches = false;
 	boolean checkForTicks = false;
-    private static final CheckBox[] AUTOLOOT_SLOTS = new CheckBox[23];
-    static {
-        AUTOLOOT_SLOTS[8]  = OptWnd.autoLootRingsCheckBox;
-        AUTOLOOT_SLOTS[9]  = OptWnd.autoLootRingsCheckBox;
-        AUTOLOOT_SLOTS[1]  = OptWnd.autoLootNecklaceCheckBox;
-        AUTOLOOT_SLOTS[0]  = OptWnd.autoLootHeadgearCheckBox;
-        AUTOLOOT_SLOTS[3]  = OptWnd.autoLootChestArmorCheckBox;
-        AUTOLOOT_SLOTS[13] = OptWnd.autoLootLegArmorCheckBox;
-        AUTOLOOT_SLOTS[10] = OptWnd.autoLootCloakRobeCheckBox;
-        AUTOLOOT_SLOTS[2]  = OptWnd.autoLootShirtCheckBox;
-        AUTOLOOT_SLOTS[12] = OptWnd.autoLootPantsCheckBox;
-        AUTOLOOT_SLOTS[4]  = OptWnd.autoLootGlovesCheckBox;
-        AUTOLOOT_SLOTS[15] = OptWnd.autoLootShoesCheckBox;
-        AUTOLOOT_SLOTS[17] = OptWnd.autoLootEyewearCheckBox;
-        AUTOLOOT_SLOTS[18] = OptWnd.autoLootMouthwearCheckBox;
-        AUTOLOOT_SLOTS[14] = OptWnd.autoLootCapeCheckBox;
-        AUTOLOOT_SLOTS[22] = OptWnd.autoLootShouldersCheckBox;
-        AUTOLOOT_SLOTS[21] = OptWnd.autoLootMaskCheckBox;
-        AUTOLOOT_SLOTS[11] = OptWnd.autoLootBackpackCheckBox;
-        AUTOLOOT_SLOTS[19] = OptWnd.autoLootPouchesCheckBox;
-        AUTOLOOT_SLOTS[20] = OptWnd.autoLootPouchesCheckBox;
-    }
 
     private static final Set<String> AUTOLOOT_WEAPON_BLACKLIST = Set.of(
             "gfx/invobjs/small/roundshield",
@@ -176,10 +154,6 @@ public class Equipory extends Widget implements DTarget {
 		public void draw(GOut g) {
 		    g.image(bg, Coord.z);
 		    super.draw(g);
-		}
-
-		{
-		    basic.add(new Outlines(false));
 		}
 
 		final FColor cc = new FColor(0, 0, 0, 0);
@@ -466,7 +440,7 @@ public class Equipory extends Widget implements DTarget {
                     GItem child = slots[slot].item;
                     if (child == null || child.attemptedAutoloot) continue;
 
-                    CheckBox box = AUTOLOOT_SLOTS[slot];
+                    CheckBox box = getAutoLootCheckBox(slot);
                     if (box != null && box.a) {
                         child.wdgmsg("transfer", Coord.z);
                         child.attemptedAutoloot = true;
@@ -484,16 +458,19 @@ public class Equipory extends Widget implements DTarget {
 	}
 
     private void handleWeaponAutoloot(GItem child) {
-        String res = child.getres().name;
+        try {
+            String res = child.getres().name;
 
-        if (isBlacklistedWeapon(res)) {
-            return;
-        }
+            if (isBlacklistedWeapon(res)) {
+                return;
+            }
 
-        Inventory belt = returnBelt();
-        if (belt != null && belt.getFreeSpace() > 0) {
-            child.wdgmsg("take", Coord.z);
-            belt.wdgmsg("drop", belt.isRoom(1, 1));
+            Inventory belt = returnBelt();
+            if (belt != null && belt.getFreeSpace() > 0) {
+                child.wdgmsg("take", Coord.z);
+                belt.wdgmsg("drop", belt.isRoom(1, 1));
+            }
+        } catch (Exception ignored) {
         }
 
         // Fallback: move to inventory
@@ -536,11 +513,44 @@ public class Equipory extends Widget implements DTarget {
 			if (!(w instanceof GItem.ContentsWindow) || !((GItem.ContentsWindow) w).myOwnEquipory) continue;
 			if (!((GItem.ContentsWindow) w).cap.contains("Belt")) continue;
 			for (Widget ww : w.children()) {
-				if (!(ww instanceof Inventory)) continue;
-				belt = (Inventory) ww;
+                Inventory inv = Inventory.fromWidget(ww);
+				if (inv == null) continue;
+				belt = inv;
 			}
 		}
 		return belt;
 	}
+
+    public static CheckBox getAutoLootCheckBox(int slot) {
+        switch (slot) {
+            case 0:  return OptWnd.autoLootHeadgearCheckBox;
+            case 1:  return OptWnd.autoLootNecklaceCheckBox;
+            case 2:  return OptWnd.autoLootShirtCheckBox;
+            case 3:  return OptWnd.autoLootChestArmorCheckBox;
+            case 4:  return OptWnd.autoLootGlovesCheckBox;
+
+            case 8:
+            case 9:  return OptWnd.autoLootRingsCheckBox;
+
+            case 10: return OptWnd.autoLootCloakRobeCheckBox;
+            case 11: return OptWnd.autoLootBackpackCheckBox;
+            case 12: return OptWnd.autoLootPantsCheckBox;
+            case 13: return OptWnd.autoLootLegArmorCheckBox;
+            case 14: return OptWnd.autoLootCapeCheckBox;
+
+            case 15: return OptWnd.autoLootShoesCheckBox;
+
+            case 17: return OptWnd.autoLootEyewearCheckBox;
+            case 18: return OptWnd.autoLootMouthwearCheckBox;
+
+            case 19:
+            case 20: return OptWnd.autoLootPouchesCheckBox;
+
+            case 21: return OptWnd.autoLootMaskCheckBox;
+            case 22: return OptWnd.autoLootShouldersCheckBox;
+
+            default: return null;
+        }
+    }
 
 }

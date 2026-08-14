@@ -36,6 +36,7 @@ import java.awt.image.WritableRaster;
 import haven.render.*;
 import haven.Defer.Future;
 import static haven.MCache.cmaps;
+import static haven.PType.*;
 
 public class MapFile {
     public static final Config.Variable<java.net.URI> mapbase = Config.Variable.propu("haven.mapbase", "");
@@ -44,8 +45,7 @@ public class MapFile {
     public final String filename;
     public final Collection<Long> knownsegs = new HashSet<>();
     public final Collection<Marker> markers = new ArrayList<>();
-    public final Map<Long, SMarker> smarkers = new HashMap<>();
-    public int markerseq = 0;
+    public volatile int markerseq = 0;
     public final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     private final Random rnd = new Random();
 
@@ -101,10 +101,8 @@ public class MapFile {
 		for(int i = 0, no = data.int32(); i < no; i++)
 		    file.knownsegs.add(data.int64());
 		for(int i = 0, no = data.int32(); i < no; i++) {
-		    Marker mark = loadmarker(data);
+		    Marker mark = file.loadmarker(data);
 		    file.markers.add(mark);
-		    if((mark instanceof SMarker) && (((SMarker)mark).oid != 0))
-			file.smarkers.put(((SMarker)mark).oid, (SMarker)mark);
 		}
 	    } else {
 		throw(new IOException(String.format("unknown mapfile index version: %d", ver)));
@@ -196,6 +194,17 @@ public class MapFile {
 	    });
     }
 
+    private static <A> Defer.Callable<A> locked(Defer.Callable<A> f, Lock lock) {
+	return(() -> {
+		lock.lock();
+		try {
+		    return(f.call());
+		} finally {
+		    lock.unlock();
+		}
+	    });
+    }
+
     private static <A, R> Function<A, R> locked(Function<A, R> f, Lock lock) {
 	return(v -> {
 		lock.lock();
@@ -266,40 +275,64 @@ public class MapFile {
     }
 
     public abstract static class Marker {
+	public final MapFile file;
 	public long seg;
 	public Coord tc;
 	public String nm;
+	public volatile int seq = 0;
 
-	public Marker(long seg, Coord tc, String nm) {
+	public Marker(MapFile file, long seg, Coord tc, String nm) {
+	    this.file = file;
 	    this.seg = seg;
 	    this.tc = tc;
 	    this.nm = nm;
+	}
+
+	public void update(boolean save) {
+	    if(save) {
+		file.update(this);
+	    } else {
+		seq++;
+		file.markerseq++;
+	    }
 	}
     }
 
     public static class PMarker extends Marker {
 	public Color color;
+	public boolean onmap;
 
-	public PMarker(long seg, Coord tc, String nm, Color color) {
-	    super(seg, tc, nm);
+	public PMarker(MapFile file, long seg, Coord tc, String nm, Color color, boolean onmap) {
+	    super(file, seg, tc, nm);
 	    this.color = color;
+	    this.onmap = onmap;
+	}
+
+	public String toString() {
+	    return(String.format("#<pmarker \"%s\" %s %d>", nm, color, seq));
 	}
     }
 
     public static class SMarker extends Marker {
-	public long oid;
+	public UID oid;
 	public Resource.Saved res;
+	public byte[] data;
 
-	public SMarker(long seg, Coord tc, String nm, long oid, Resource.Saved res) {
-	    super(seg, tc, nm);
+	public SMarker(MapFile file, long seg, Coord tc, String nm, UID oid, Resource.Saved res, byte[] data) {
+	    super(file, seg, tc, nm);
 	    this.oid = oid;
 	    this.res = res;
+	    this.data = data;
+	}
+
+	public String toString() {
+	    return(String.format("#<smarker \"%s\" %s %s %s>", nm, oid, res.name, seq));
 	}
     }
 
-    private static Marker loadmarker(Message fp) {
+    private Marker loadmarker(Message fp) {
 	int ver = fp.uint8();
-	if(ver == 1) {
+	if((ver >= 1) && (ver <= 3)) {
 	    long seg = fp.int64();
 	    Coord tc = fp.coord();
 	    String nm = fp.string();
@@ -307,13 +340,34 @@ public class MapFile {
 	    switch(type) {
 	    case 'p':
 		Color color = fp.color();
-		return(new PMarker(seg, tc, nm, color));
+		boolean onmap = (ver >= 2) ? fp.uint8() != 0 : false;
+		return(new PMarker(this, seg, tc, nm, color, onmap));
 	    case 's':
-		long oid = fp.int64();
+		UID oid = UID.of(fp.int64());
 		Resource.Saved res = new Resource.Saved(Resource.remote(), fp.string(), fp.uint16());
-		return(new SMarker(seg, tc, nm, oid, res));
+		byte[] data = new byte[0];
+		if(ver >= 3)
+		    data = fp.bytes(fp.uint8());
+		return(new SMarker(this, seg, tc, nm, oid, res, data));
 	    default:
 		throw(new Message.FormatError("Unknown marker type: " + (int)type));
+	    }
+	} else if(ver >= 4) {
+	    @SuppressWarnings("unchecked") Map<Object, Object> enc = (Map<Object, Object>)fp.tto();
+	    long seg = UNIQID.of(enc.get("seg")).bits;
+	    Coord tc = COORD.of(enc.get("c"));
+	    String nm = STR.of(enc.get("nm"));
+	    if(enc.containsKey("col")) {
+		Color color = COLOR.of(enc.get("col"));
+		boolean onmap = BOOL.of(enc.getOrDefault("md", 0));
+		return(new PMarker(this, seg, tc, nm, color, onmap));
+	    } else if(enc.containsKey("res")) {
+		UID oid = UNIQID.of(enc.get("oid"));
+		Resource.Named res = (Resource.Named)enc.get("res");
+		byte[] data = BYTES.of(enc.getOrDefault("dat", new byte[0]));
+		return(new SMarker(this, seg, tc, nm, oid, new Resource.Saved(Resource.remote(), res.name, res.ver), data));
+	    } else {
+		throw(new Message.FormatError("Unknown marker type: " + enc));
 	    }
 	} else {
 	    throw(new Message.FormatError("Unknown marker version: " + ver));
@@ -321,32 +375,35 @@ public class MapFile {
     }
 
     private static void savemarker(Message fp, Marker mark) {
-	fp.adduint8(1);
-	fp.addint64(mark.seg);
-	fp.addcoord(mark.tc);
-	fp.addstring(mark.nm);
+	Map<Object, Object> enc = new HashMap<>();
+	enc.put("seg", UID.of(mark.seg));
+	enc.put("c", mark.tc);
+	enc.put("nm", mark.nm);
 	if(mark instanceof PMarker) {
-	    fp.adduint8('p');
-	    fp.addcolor(((PMarker)mark).color);
+	    PMarker pm = (PMarker)mark;
+	    enc.put("col", pm.color);
+	    if(pm.onmap)
+		enc.put("md", 1);
 	} else if(mark instanceof SMarker) {
 	    SMarker sm = (SMarker)mark;
-	    fp.adduint8('s');
-	    fp.addint64(sm.oid);
-	    fp.addstring(sm.res.name);
-	    fp.adduint16(sm.res.savever());
+	    enc.put("oid", sm.oid);
+	    enc.put("res", sm.res);
+	    if(sm.data.length > 0)
+		enc.put("dat", sm.data);
 	} else {
 	    throw(new ClassCastException("Can only save PMarkers and SMarkers"));
 	}
+	fp.adduint8(4);
+	fp.addtto(enc);
     }
 
     public void add(Marker mark) {
 	lock.writeLock().lock();
 	try {
 	    if(markers.add(mark)) {
-		if((mark instanceof SMarker) && (((SMarker)mark).oid != 0))
-		    smarkers.put(((SMarker)mark).oid, (SMarker)mark);
 		defersave();
 		markerseq++;
+		mark.seq++;
 	    }
 	} finally {
 	    lock.writeLock().unlock();
@@ -357,10 +414,9 @@ public class MapFile {
 	lock.writeLock().lock();
 	try {
 	    if(markers.remove(mark)) {
-		if((mark instanceof SMarker) && (((SMarker)mark).oid != 0))
-		    smarkers.remove(((SMarker)mark).oid, (SMarker)mark);
 		defersave();
 		markerseq++;
+		mark.seq++;
 	    }
 	} finally {
 	    lock.writeLock().unlock();
@@ -373,6 +429,7 @@ public class MapFile {
 	    if(markers.contains(mark)) {
 		defersave();
 		markerseq++;
+		mark.seq++;
 	    }
 	} finally {
 	    lock.readLock().unlock();
@@ -466,9 +523,11 @@ public class MapFile {
 		    int t = gettile(c);
 		    BufferedImage tex = tiletex(t, texes, cached);
 		    int rgb = 0;
-		    if(tex != null)
+		    if(tex != null) {
 			rgb = tex.getRGB(Utils.floormod(c.x + off.x, tex.getWidth()),
 					 Utils.floormod(c.y + off.y, tex.getHeight()));
+			rgb = SimplifiedMapColors.applyColor(tilesets[t].res.name, rgb);
+		    }
 		    buf.setSample(c.x, c.y, 0, (rgb & 0x00ff0000) >>> 16);
 		    buf.setSample(c.x, c.y, 1, (rgb & 0x0000ff00) >>>  8);
 		    buf.setSample(c.x, c.y, 2, (rgb & 0x000000ff) >>>  0);
@@ -477,16 +536,18 @@ public class MapFile {
 	    }
 	    for(c.y = 1; c.y < cmaps.y - 1; c.y++) {
 		for(c.x = 1; c.x < cmaps.x - 1; c.x++) {
-		    int p = tilesets[gettile(c)].prio;
-		    if((tilesets[gettile(c.add(-1, 0))].prio > p) ||
-		       (tilesets[gettile(c.add( 1, 0))].prio > p) ||
-		       (tilesets[gettile(c.add(0, -1))].prio > p) ||
-		       (tilesets[gettile(c.add(0,  1))].prio > p))
-		    {
-			buf.setSample(c.x, c.y, 0, 0);
-			buf.setSample(c.x, c.y, 1, 0);
-			buf.setSample(c.x, c.y, 2, 0);
-			buf.setSample(c.x, c.y, 3, 255);
+		    if(!OptWnd.removeMapTileBordersCheckBox.a) {
+			int p = tilesets[gettile(c)].prio;
+			if((tilesets[gettile(c.add(-1, 0))].prio > p) ||
+			   (tilesets[gettile(c.add( 1, 0))].prio > p) ||
+			   (tilesets[gettile(c.add(0, -1))].prio > p) ||
+			   (tilesets[gettile(c.add(0,  1))].prio > p))
+			{
+			    buf.setSample(c.x, c.y, 0, 0);
+			    buf.setSample(c.x, c.y, 1, 0);
+			    buf.setSample(c.x, c.y, 2, 0);
+			    buf.setSample(c.x, c.y, 3, 255);
+			}
 		    }
 		}
 	    }
@@ -1160,7 +1221,7 @@ public class MapFile {
 	}
 
 	private Future<Grid> loadgrid(long id) {
-	    return(Defer.later(() -> Grid.load(MapFile.this, id)));
+	    return(Defer.later(locked(() -> Grid.load(MapFile.this, id), lock.readLock())));
 	}
 
 	private Cached grid0(long id) {
@@ -1189,7 +1250,7 @@ public class MapFile {
 	}
 
 	private Future<ZoomGrid> loadzgrid(ZoomCoord zc) {
-	    return(Defer.later(() -> ZoomGrid.fetch(MapFile.this, Segment.this, zc.lvl, zc.c)));
+	    return(Defer.later(locked(() -> ZoomGrid.fetch(MapFile.this, Segment.this, zc.lvl, zc.c), lock.readLock())));
 	}
 
 	private class ByZCoord implements Indir<ZoomGrid> {
@@ -1479,6 +1540,7 @@ public class MapFile {
 	    if(mark.seg == src.id) {
 		mark.seg = dst.id;
 		mark.tc = mark.tc.sub(soff.mul(cmaps));
+		mark.seq++;
 		mf = true;
 	    }
 	}

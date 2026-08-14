@@ -31,6 +31,8 @@ import haven.render.*;
 import haven.Audio.CS;
 
 public class AudioSprite {
+
+
     public static List<Audio.Clip> clips(Resource res, String id) {
 	return(new ArrayList<>(res.layers(Audio.clip, clip -> clip.layerid().equals(id))));
     }
@@ -66,19 +68,53 @@ public class AudioSprite {
 	public final ActAudio.PosClip clip;
 	private boolean done = false;
 
+	private static haven.Audio.CS voladjust(haven.Audio.CS stream, HSlider slider) {
+	    return((slider == null) ? stream : new Audio.VolAdjust(stream, slider.val / 100d));
+	}
+
 	public ClipSprite(Owner owner, Resource res, Audio.Clip clip) {
 	    super(owner, res);
 		haven.Audio.CS stream = clip.stream();
-		if (res.name.equals("sfx/borka/clap"))
-			stream = new Audio.VolAdjust(stream, OptWnd.clapSoundVolumeSlider.val/100d);
-		else if (res.name.equals("sfx/terobjs/quern"))
-			stream = new Audio.VolAdjust(stream, OptWnd.quernSoundVolumeSlider.val/100d);
-		else if (res.name.equals("sfx/squeak") || res.name.equals("sfx/terobjs/grinder"))
-			stream = new Audio.VolAdjust(stream, OptWnd.squeakSoundVolumeSlider.val/100d);
-		else if (res.name.equals("sfx/borka/butcher"))
-			stream = new Audio.VolAdjust(stream, OptWnd.butcherSoundVolumeSlider.val/100d);
-		else if (res.name.equals("sfx/items/hats/quack"))
-			stream = new Audio.VolAdjust(stream, OptWnd.whiteDuckCapSoundVolumeSlider.val/100d);
+        switch (res.name) {
+            case "sfx/borka/clap":
+                stream = voladjust(stream, OptWnd.clapSoundVolumeSlider);
+                break;
+            case "sfx/terobjs/quern":
+                stream = voladjust(stream, OptWnd.quernSoundVolumeSlider);
+                break;
+            case "sfx/squeak":
+            case "sfx/terobjs/grinder":
+                stream = voladjust(stream, OptWnd.squeakSoundVolumeSlider);
+                break;
+            case "sfx/borka/butcher":
+                stream = voladjust(stream, OptWnd.butcherSoundVolumeSlider);
+                break;
+            case "sfx/items/hats/quack":
+                stream = voladjust(stream, OptWnd.whiteDuckCapSoundVolumeSlider);
+                break;
+            case "sfx/chip":
+                stream = voladjust(stream, OptWnd.chippingSoundVolumeSlider);
+                break;
+            case "sfx/items/pickaxe":
+            case "sfx/mineout":
+                stream = voladjust(stream, OptWnd.miningSoundVolumeSlider);
+                break;
+            case "sfx/swoosh":
+                stream = voladjust(stream, OptWnd.swooshSoundVolumeSlider);
+                break;
+            case "sfx/items/bells":
+                stream = voladjust(stream, OptWnd.doomBellCapSoundVolumeSlider);
+                break;
+            case "sfx/creak":
+                stream = voladjust(stream, OptWnd.creakSoundVolumeSlider);
+                break;
+            case "sfx/terobjs/knarr":
+                stream = voladjust(stream, OptWnd.knarrSoundVolumeSlider);
+                break;
+            case "sfx/tiles/wstep":
+                stream = voladjust(stream, OptWnd.waterSplashSoundVolumeSlider);
+                break;
+        }
 	    this.clip = new ActAudio.PosClip(new Audio.Monitor(stream) {
 		    protected void eof() {
 			super.eof();

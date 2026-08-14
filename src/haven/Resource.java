@@ -40,6 +40,8 @@ import java.nio.file.*;
 import javax.imageio.*;
 import java.awt.image.BufferedImage;
 
+import static haven.AlarmManager.defaultSettings;
+
 public class Resource implements Serializable {
     public static final Config.Variable<URI> resurl = Config.Variable.propu("haven.resurl", "");
     public static final Config.Variable<Path> resdir = Config.Variable.propp("haven.resdir", System.getenv("HAFEN_RESDIR"));
@@ -59,7 +61,7 @@ public class Resource implements Serializable {
     public final String name;
     public int ver;
     public ResSource source;
-    public final transient Pool pool;
+    public transient Pool pool;
     protected Collection<Layer> layers = new LinkedList<Layer>();
     private boolean used = false;
 
@@ -165,24 +167,36 @@ public class Resource implements Serializable {
 	    return(() -> {throw(new NoSuchResourceException(String.format("dyn/%x", uid.longValue()), 1, null));});
 	}
 
+	public static class Descriptor<R extends Resolver> implements PType<Indir<Resource>> {
+	    public final R rr;
+
+	    public Descriptor(R rr) {this.rr = rr;}
+
+	    public Maybe<Indir<Resource>> opt(Object desc) {
+		if(desc instanceof UID)
+		    return(Maybe.of(rr.dynres((UID)desc)));
+		if(desc instanceof Number) {
+		    int id = ((Number)desc).intValue();
+		    if(id < 0)
+			return(Maybe.of(null));
+		    return(Maybe.of(rr.getres(id)));
+		}
+		if(desc instanceof Resource)
+		    return(Maybe.of(((Resource)desc).indir()));
+		if(desc instanceof Indir) {
+		    @SuppressWarnings("unchecked") Indir<Resource> ret = (Indir<Resource>)desc;
+		    return(Maybe.of(ret));
+		}
+		return(Maybe.not(() -> new ValueFormatException("res-desc", desc)));
+	    }
+	}
+
+	public default PType<Indir<Resource>> desc() {
+	    return(new Descriptor<>(this));
+	}
+
 	public default Indir<Resource> getresv(Object desc) {
-	    if(desc == null)
-		return(null);
-	    if(desc instanceof UID)
-		return(dynres((UID)desc));
-	    if(desc instanceof Number) {
-		int id = ((Number)desc).intValue();
-		if(id < 0)
-		    return(null);
-		return(this.getres(id));
-	    }
-	    if(desc instanceof Resource)
-		return(((Resource)desc).indir());
-	    if(desc instanceof Indir) {
-		@SuppressWarnings("unchecked") Indir<Resource> ret = (Indir<Resource>)desc;
-		return(ret);
-	    }
-	    throw(new Utils.ArgumentFormatException("res-desc", desc));
+	    return(desc().of(desc));
 	}
 
 	public class ResourceMap implements Resource.Resolver {
@@ -244,10 +258,6 @@ public class Resource implements Serializable {
     public static class Virtual extends Resource {
 	public Virtual(Pool pool, String name, int ver) {
 	    super(pool, name, ver);
-	}
-
-	public Virtual(String name, int ver) {
-	    this(remote(), name, ver);
 	}
 
 	public void add(Layer layer) {
@@ -316,7 +326,6 @@ public class Resource implements Serializable {
 					"com5", "com6", "com7", "com8", "com9",
 					"lpt0", "lpt1", "lpt2", "lpt3", "lpt4",
 					"lpt5", "lpt6", "lpt7", "lpt8", "lpt9"));
-	public static final boolean windows = System.getProperty("os.name", "").startsWith("Windows");
 	private static final boolean[] winsafe;
 	public final Path base;
 
@@ -337,7 +346,7 @@ public class Resource implements Serializable {
 	}
 
 	private static String checkpart(String part, String whole) throws FileNotFoundException {
-	    if(windows && wintraps.contains(part))
+	    if(Config.windows && wintraps.contains(part))
 		throw(new FileNotFoundException(whole));
 	    return(part);
 	}
@@ -634,6 +643,17 @@ public class Resource implements Serializable {
 	}
 
 	public Named load(String name, int ver, int prio) {
+        if (name.startsWith("gfx/hud/")) {
+            String uiTheme =  Utils.getpref("uiThemeName", "Nightdawg Dark");
+            if (!uiTheme.equals("Nightdawg Dark")) {
+                String result = name.replaceFirst("^gfx/hud", "");
+                String finalString = "customclient/uiThemes/" + uiTheme + result;
+                File customHudFile = new File(haven.Client.gameDir + "res/" + finalString +".res");
+                if(customHudFile.exists()) {
+                    name = finalString;
+                }
+            }
+        }
 	    Queued ret;
 	    synchronized(cache) {
 		Resource cur = cache.get(name);
@@ -843,7 +863,7 @@ public class Resource implements Serializable {
 	    synchronized(Resource.class) {
 		if(_local == null) {
 //		    Pool local = new Pool(new JarSource("res"));
-			Pool local = new Pool(new FileSource(Utils.path(haven.MainFrame.gameDir + "res"))); // ND: Load custom res files from the client folder
+			Pool local = new Pool(new FileSource(Utils.path(haven.Client.gameDir + "res"))); // ND: Load custom res files from the client folder
 			local.add(new JarSource("res"));
 		    try {
 			if(resdir.get() != null)
@@ -860,7 +880,7 @@ public class Resource implements Serializable {
 	return(_local);
     }
 
-    private static Pool _remote = null;
+    private static volatile Pool _remote = null;
     public static Pool remote() {
 	if(_remote == null) {
 	    synchronized(Resource.class) {
@@ -1038,6 +1058,10 @@ public class Resource implements Serializable {
 	}
     }
 
+    public interface Metadata {
+	public Map<?, ?> info();
+    }
+
     public interface IDLayer<T> {
 	public T layerid();
     }
@@ -1058,7 +1082,7 @@ public class Resource implements Serializable {
     }
 
     @LayerName("image")
-    public class Image extends Layer implements IDLayer<Integer> {
+    public class Image extends Layer implements IDLayer<Integer>, Metadata {
 	public transient BufferedImage img;
 	transient BufferedImage scaled;
 	private transient Tex tex, rawtex;
@@ -1198,9 +1222,8 @@ public class Resource implements Serializable {
 	    return(tex);
 	}
 
-	public Integer layerid() {
-	    return(id);
-	}
+	public Integer layerid() {return(id);}
+	public Map<String, Object> info() {return(info);}
 		
 	public void init() {}
     }
@@ -1832,21 +1855,34 @@ public class Resource implements Serializable {
     }
 
     @LayerName("audio2")
-    public class Audio extends Layer implements haven.Audio.Clip {
+    public class Audio extends Layer implements haven.Audio.Clip, Metadata {
 	transient public byte[] coded;
 	public final String id;
+	public final Map<String, Object> info;
 	public double bvol = 1.0;
 
 	public Audio(Message buf) {
 	    int ver = buf.uint8();
-	    if((ver >= 1) && (ver <= 2)) {
+	    Map<String, Object> info = new HashMap<>();
+	    if((ver >= 1) && (ver <= 3)) {
 		this.id = buf.string();
-		if(ver >= 2)
+		if(ver == 2)
 		    bvol = buf.uint16() * 0.001;
+		if(ver >= 3) {
+		    while(true) {
+			String key = buf.string();
+			if(key.equals(""))
+			    break;
+			Object val = buf.tto(resmapper());
+			info.put(key, val);
+		    }
+		    bvol = Utils.dv(Utils.pop(info, "vol", 1.0));
+		}
 		this.coded = buf.bytes();
 	    } else {
 		throw(new UnknownFormatException(getres(), "audio layer version", ver));
 	    }
+	    this.info = info.isEmpty() ? Collections.emptyMap() : info;
 	}
 
 	public void init() {}
@@ -1860,6 +1896,7 @@ public class Resource implements Serializable {
 	}
 
 	public String layerid() {return(id);}
+	public Map<String, Object> info() {return(info);}
 	public double bvol() {return(bvol);}
     }
 
@@ -1979,7 +2016,7 @@ public class Resource implements Serializable {
 	for(Layer l : layers) {
 	    if(cl.isInstance(l)) {
 		L ll = cl.cast(l);
-		if(ll.layerid().equals(id))
+		if((id == null) || ll.layerid().equals(id))
 		    return(ll);
 	    }
 	}
@@ -2008,6 +2045,28 @@ public class Resource implements Serializable {
 	    this.ver = ver;
 	else if(ver != this.ver)
 	    throw(new LoadException("Wrong res version (" + ver + " != " + this.ver + ")", this));
+	Pool rem = _remote;
+	if((rem != null) && (source instanceof FileSource)) {
+	    /* ND: A resource loaded from a local .res file is created by the
+	     * local() pool, which cannot reach the game server, so its external
+	     * references (materials, linked sprites, code classpath, etc.) would
+	     * fail to resolve. Rebind it to the full remote() chain, which
+	     * checks local overrides first (via its parent pool) and only then
+	     * the server.
+	     *
+	     * Only rebind when remote() already exists -- deliberately never
+	     * force its creation here. During early startup a FileSource load
+	     * can happen before setupres() has installed the resource cache
+	     * (e.g. GobIcon preset loading on the main thread racing setupres()
+	     * on another); building remote() at that point would produce a
+	     * cache-less pool and make every resource re-download from the
+	     * network. Bundled resources that load that early have no external
+	     * references anyway, while gameplay overrides (the ones that need
+	     * this) load long after remote() has been set up with its cache.
+	     * Reassigned before decoding layers because some factories (e.g.
+	     * Material) capture res.pool at decode time. */
+	    this.pool = rem;
+	}
 	while(!in.eom()) {
 	    LayerFactory<?> lc = ltypes.get(in.string());
 	    int len = in.int32();

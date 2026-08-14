@@ -149,6 +149,8 @@ public abstract class ItemInfo {
 		});
 	    for(Tip tip : tips)
 		tip.layout(this);
+	    if((cmp.sz.x <= 0) || (cmp.sz.y <= 0))
+		return(null);
 	    return(cmp.compose());
 	}
     }
@@ -181,6 +183,27 @@ public abstract class ItemInfo {
 	public BufferedImage tipimg() {
 	    return(str.img);
 	}
+    }
+
+    public static class ResourceName extends Tip {
+	private final Text str;
+
+	public ResourceName(Owner owner, String name) {
+	    super(owner);
+	    this.str = Text.render(name, Color.GREEN);
+	}
+
+	public BufferedImage tipimg() {
+	    return((OptWnd.extendedMouseoverInfoCheckBox != null) && OptWnd.extendedMouseoverInfoCheckBox.a ? str.img : null);
+	}
+
+	public void layout(Layout l) {
+	    BufferedImage img = tipimg();
+	    if(img != null)
+		l.cmp.add(img, new Coord(0, l.cmp.sz.y + img.getHeight()));
+	}
+
+	public int order() {return(20000);}
     }
 
     public static class Name extends Tip {
@@ -221,6 +244,8 @@ public abstract class ItemInfo {
 	@Resource.PublishedCode.Builtin(type = InfoFactory.class, name = "defn")
 	public static class Default implements InfoFactory {
 	    public static String get(Owner owner) {
+		if(owner instanceof Dynamic)
+		    return(((Dynamic)owner).name());
 		if(owner instanceof SpriteOwner) {
 		    GSprite spr = ((SpriteOwner)owner).sprite();
 		    if(spr instanceof Dynamic)
@@ -243,15 +268,18 @@ public abstract class ItemInfo {
     }
 
     public static class Pagina extends Tip {
-	public final String str;
+	public final RichText.Document doc;
 
-	public Pagina(Owner owner, String str) {
+	public Pagina(Owner owner, RichText.Document doc) {
 	    super(owner);
-	    this.str = str;
+	    this.doc = doc;
+	}
+	public Pagina(Owner owner, String str) {
+	    this(owner, new RichText.Document(str));
 	}
 
 	public BufferedImage tipimg(int w) {
-	    return(RichText.render(str, w).img);
+	    return(RichText.render(doc, w).img);
 	}
 
 	public void layout(Layout l) {
@@ -434,7 +462,8 @@ public abstract class ItemInfo {
 	}
 	if(l.tips.size() < 1)
 	    return(null);
-	return(PUtils.strokeImg(l.render()));
+	BufferedImage ret = l.render();
+	return((ret == null) ? null : PUtils.strokeImg(ret));
     }
 
     public static BufferedImage shorttip(List<ItemInfo> info) {
@@ -461,7 +490,8 @@ public abstract class ItemInfo {
 	List<ItemInfo> ret = new ArrayList<ItemInfo>();
 	Resource.Resolver rr = owner.context(Resource.Resolver.class);
 	for(Object o : raw.data) {
-	    if(o instanceof Object[]) {
+	    if(o == null) {
+	    } else if(o instanceof Object[]) {
 		Object[] a = (Object[])o;
 		ItemInfo inf;
 		if(a[0] instanceof InfoFactory) {
@@ -482,6 +512,8 @@ public abstract class ItemInfo {
 		    ret.add(inf);
 	    } else if(o instanceof String) {
 		ret.add(new AdHoc(owner, (String)o));
+	    } else if(o instanceof ItemInfo) {
+		ret.add((ItemInfo)o);
 	    } else {
 		throw(new ClassCastException("Unexpected object type " + o.getClass() + " in item info array."));
 	    }
